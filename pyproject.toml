@@ -7,11 +7,13 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.11"
-langchain = "^0.1.16"
-
-
-[tool.poetry.group.dev.dependencies]
-ipykernel = "^6.29.4"
+langchain = "^0.1.15"
+langserve = "^0.0.51"
+fastapi = "^0.110.1"
+sse-starlette = "^2.1.0"
+bs4 = "^0.0.2"
+pypdf = "^4.2.0"
+chromadb = "^0.5.0"
 
 [build-system]
 requires = ["poetry-core"]
