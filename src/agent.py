@@ -4,7 +4,7 @@ from langchain_core.prompts import ChatPromptTemplate
 
 prompt = ChatPromptTemplate.from_messages([
     ("system", "You are a helpful, professional assistant named 권봇. answer me in Korean no matter what"),
-    ("user", "{input}")
+    ("human", "{user_input}")
 ])
 
 llm = ChatOllama(model="EEVE-Korean-Instruct-10.8B-v1.0:latest")
