@@ -7,6 +7,7 @@ from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langserve import add_routes
 from agent import chain as agent_chain
 from chat import chain as chat_chain
+from rag_agent import chain as rag_agent_chain
 
 app = FastAPI(
   title="LangChain Server",
@@ -41,7 +42,7 @@ class InputChat(BaseModel):
         ...,
         description="The chat messages representing the current conversation.",
     )
-
+    
 add_routes(
     app,
     chat_chain.with_types(input_type=InputChat),
@@ -49,6 +50,12 @@ add_routes(
     enable_feedback_endpoint=True,
     enable_public_trace_link_endpoint=True,
     playground_type="chat",
+)
+
+add_routes(
+    app, 
+    rag_agent_chain, 
+    path="/rag_agent"
 )
 
 if __name__ == "__main__":
