@@ -50,15 +50,28 @@ vectorstore = FAISS.load_local(MY_FAISS_INDEX,
                                allow_dangerous_deserialization=True
                                )
 
-retriever = vectorstore.as_retriever()
+retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 10})
 
-prompt = hub.pull("rlm/rag-prompt") # https://smith.langchain.com/hub/rlm/rag-prompt
+# prompt = hub.pull("rlm/rag-prompt") # https://smith.langchain.com/hub/rlm/rag-prompt
+prompt = ChatPromptTemplate.from_messages([
+    ("system", """
+You are an assistant for question-answering tasks.
+Use the following pieces of retrieved context to answer the question.
+If you don't know the answer, just say that you don't know.
 
-def format_docs(docs):
-    return "\n\n".join(doc.page_content for doc in docs)
+question : {question}
+
+context : {context}
+"""
+    ),
+])
+
+# extract page_content
+def get_page_contents(docs):
+    return "\n\n\n".join(f'{doc.page_content}' for doc in docs)
 
 chain = (
-    {"context": retriever | format_docs, "question": RunnablePassthrough()}
+    {"context": retriever | get_page_contents, "question": RunnablePassthrough()}
     | prompt
     | llm
     | StrOutputParser()
