@@ -19,6 +19,8 @@ sentence-transformers = "^2.7.0"
 langchainhub = "^0.1.15"
 langchain-openai = "^0.1.6"
 openai = "^1.28.1"
+langsmith = "^0.1.57"
+python-dotenv = "^1.0.1"
 
 [build-system]
 requires = ["poetry-core"]

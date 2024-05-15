@@ -55,23 +55,27 @@ retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k
 # prompt = hub.pull("rlm/rag-prompt") # https://smith.langchain.com/hub/rlm/rag-prompt
 prompt = ChatPromptTemplate.from_messages([
     ("system", """
-You are an assistant for question-answering tasks.
-Use the following pieces of retrieved context to answer the question.
-If you don't know the answer, just say that you don't know.
+너는 유능한 업무 보조자야.
+다음 context를 사용해서 question에 대한 답과 출처를 심플하게 말해줘
+정답을 모르면 모른다고만 해.
 
-question : {question}
+# question : {question}
 
-context : {context}
+# context : {context}
 """
     ),
 ])
 
 # extract page_content
 def get_page_contents(docs):
-    return "\n\n\n".join(f'{doc.page_content}' for doc in docs)
+    return "\n\n".join(f'{doc.page_content}' for doc in docs)
+
+# extract page_content with metadata
+def get_page_contents_with_metadata(docs):
+    return "\n\n".join(f'{doc.page_content} [출처 : {doc.metadata["source"]}]' for doc in docs)
 
 chain = (
-    {"context": retriever | get_page_contents, "question": RunnablePassthrough()}
+    {"context": retriever | get_page_contents_with_metadata, "question": RunnablePassthrough()}
     | prompt
     | llm
     | StrOutputParser()

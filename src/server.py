@@ -8,6 +8,10 @@ from langserve import add_routes
 from agent import chain as agent_chain
 from chat import chain as chat_chain
 from rag_agent import chain as rag_agent_chain
+from dotenv import load_dotenv
+
+# 환경변수 로드 (.env)
+load_dotenv()
 
 app = FastAPI(
   title="LangChain Server",
