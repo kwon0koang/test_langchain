@@ -5,9 +5,9 @@ from typing import List, Union
 from langserve.pydantic_v1 import BaseModel, Field
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langserve import add_routes
-from agent import chain as agent_chain
+from chain import chain as chain
 from chat import chain as chat_chain
-from rag_agent import chain as rag_agent_chain
+from rag_chain import chain as rag_chain
 from dotenv import load_dotenv
 
 # 환경변수 로드 (.env)
@@ -31,12 +31,12 @@ app.add_middleware(
 
 @app.get("/")
 async def redirect_root_to_docs():
-    return RedirectResponse("agent/playground")
+    return RedirectResponse("chain/playground")
 
 add_routes(
     app, 
-    agent_chain, 
-    path="/agent"
+    chain, 
+    path="/chain"
 )
 
 class InputChat(BaseModel):
@@ -58,8 +58,8 @@ add_routes(
 
 add_routes(
     app, 
-    rag_agent_chain, 
-    path="/rag_agent"
+    rag_chain, 
+    path="/rag_chain"
 )
 
 if __name__ == "__main__":

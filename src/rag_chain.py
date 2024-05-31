@@ -9,9 +9,7 @@ from langchain_core.runnables import RunnablePassthrough
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 import bs4
 from langchain_community.document_loaders import WebBaseLoader
-
-
-llm = ChatOllama(model="EEVE-Korean-Instruct-10.8B-v1.0:latest")
+from llm import llm
 
 # # BeautifulSoup : HTML 및 XML 문서를 파싱하고 구문 분석하는 데 사용되는 파이썬 라이브러리. 주로 웹 스크레이핑(웹 페이지에서 데이터 추출) 작업에서 사용되며, 웹 페이지의 구조를 이해하고 필요한 정보를 추출하는 데 유용
 # loader = WebBaseLoader(
@@ -56,12 +54,14 @@ retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k
 prompt = ChatPromptTemplate.from_messages([
     ("system", """
 너는 유능한 업무 보조자야.
-다음 context를 사용해서 question에 대한 답과 출처를 심플하게 말해줘
+다음 context를 사용해서 question에 대한 답과 출처를 심플하게 말해줘.
 정답을 모르면 모른다고만 해.
 
 # question : {question}
 
 # context : {context}
+
+# answer : 
 """
     ),
 ])
