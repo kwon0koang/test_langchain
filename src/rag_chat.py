@@ -9,6 +9,7 @@ from langchain_core.runnables import RunnablePassthrough
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 import bs4
 from langchain_community.document_loaders import WebBaseLoader
+from langchain.memory import ConversationSummaryBufferMemory
 from llm import llm
 
 # # BeautifulSoup : HTML 및 XML 문서를 파싱하고 구문 분석하는 데 사용되는 파이썬 라이브러리. 주로 웹 스크레이핑(웹 페이지에서 데이터 추출) 작업에서 사용되며, 웹 페이지의 구조를 이해하고 필요한 정보를 추출하는 데 유용
@@ -50,32 +51,36 @@ vectorstore = FAISS.load_local(MY_FAISS_INDEX,
 
 retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 10})
 
-# prompt = hub.pull("rlm/rag-prompt") # https://smith.langchain.com/hub/rlm/rag-prompt
+memory = ConversationSummaryBufferMemory(
+    llm=llm,
+    max_token_limit=80,
+    memory_key="chat_history",
+    return_messages=True,
+)
+
+def load_memory(input):
+    print(input)
+    return memory.load_memory_variables({})["chat_history"]
+
 prompt = ChatPromptTemplate.from_messages([
     ("system", """
 너는 유능한 업무 보조자야.
-다음 context를 사용해서 question에 대한 답과 출처를 심플하게 말해줘.
+다음 context를 사용해서 질문에 대한 답과 출처를 심플하게 말해줘.
 정답을 모르면 모른다고만 해.
 
-# question : {question}
-
 # context : {context}
-
-# answer :
 """
     ),
+    # MessagesPlaceholder(variable_name="chat_history"),
+    ("human", "{question}"),
 ])
-
-# extract page_content
-def get_page_contents(docs):
-    return "\n\n".join(f'{doc.page_content}' for doc in docs)
 
 # extract page_content with metadata
 def get_page_contents_with_metadata(docs):
     return "\n\n".join(f'{doc.page_content} [출처 : {doc.metadata["source"]}]' for doc in docs)
 
 chain = (
-    {"context": retriever | get_page_contents_with_metadata, "question": RunnablePassthrough()}
+    {"context": retriever | get_page_contents_with_metadata, "question": RunnablePassthrough}
     | prompt
     | llm
     | StrOutputParser()
