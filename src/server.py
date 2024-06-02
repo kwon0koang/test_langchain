@@ -65,37 +65,6 @@ add_routes(
     rag_chain, 
     path="/rag_chain"
 )
-    
-# class ChatHistory(CustomUserType):
-#     chat_history: List[Tuple[str, str]] = Field(
-#         ...,
-#         examples=[[("human input", "ai response")]],
-#         extra={"widget": {"type": "chat", "input": "question", "output": "answer"}},
-#     )
-#     question: str
-
-
-# def _format_to_messages(input: ChatHistory) -> List[BaseMessage]:
-#     """Format the input to a list of messages."""
-#     history = input.chat_history
-#     user_input = input.question
-
-#     messages = []
-
-#     for human, ai in history:
-#         messages.append(HumanMessage(content=human))
-#         messages.append(AIMessage(content=ai))
-#     messages.append(HumanMessage(content=user_input))
-#     return messages
-    
-add_routes(
-    app,
-    rag_chat.with_types(input_type=InputChat),
-    path="/rag_chat",
-    enable_feedback_endpoint=True,
-    enable_public_trace_link_endpoint=True,
-    playground_type="chat",
-)
 
 if __name__ == "__main__":
     import uvicorn

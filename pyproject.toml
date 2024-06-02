@@ -21,6 +21,7 @@ langchain-openai = "^0.1.6"
 openai = "^1.28.1"
 langsmith = "^0.1.57"
 python-dotenv = "^1.0.1"
+langchain-google-vertexai = "^1.0.4"
 
 [build-system]
 requires = ["poetry-core"]
