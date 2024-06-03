@@ -68,4 +68,5 @@ add_routes(
 if __name__ == "__main__":
     import uvicorn
     
+    # uvicorn: ASGI(Asynchronous Server Gateway Interface) 서버를 구현한 비동기 경량 웹 서버
     uvicorn.run(app, host="localhost", port=8000)
