@@ -11,7 +11,6 @@ from langserve import add_routes
 from chain import chain as chain
 from chat import chain as chat_chain
 from rag_chain import chain as rag_chain
-from rag_chat import chain as rag_chat
 from dotenv import load_dotenv
 
 # 환경변수 로드 (.env)
