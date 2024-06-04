@@ -46,7 +46,7 @@ class InputChat(BaseModel):
     """Input for the chat endpoint."""
 
     messages: List[Union[HumanMessage, AIMessage, SystemMessage]] = Field(
-        ...,
+        ..., # Pydantic에서 필수 필드임을 의미
         description="The chat messages representing the current conversation.",
     )
     
