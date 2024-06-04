@@ -11,15 +11,16 @@ import bs4
 from langchain_community.document_loaders import WebBaseLoader
 from llm import llm
 from constants import MY_FAISS_INDEX
+from embeddings import embeddings
 
 # 로컬 DB 불러오기
-embeddings = OllamaEmbeddings(model="EEVE-Korean-Instruct-10.8B-v1.0:latest")
-vectorstore = FAISS.load_local(MY_FAISS_INDEX, 
-                               embeddings, 
-                               allow_dangerous_deserialization=True
+vectorstore = FAISS.load_local(MY_FAISS_INDEX
+                               , embeddings
+                               , allow_dangerous_deserialization=True
                                )
 
-retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 10})
+retriever = vectorstore.as_retriever(search_type="similarity"
+                                     , search_kwargs={"k": 5})
 
 # prompt = hub.pull("rlm/rag-prompt") # https://smith.langchain.com/hub/rlm/rag-prompt
 prompt = ChatPromptTemplate.from_messages([
