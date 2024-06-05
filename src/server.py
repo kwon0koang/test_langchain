@@ -65,6 +65,17 @@ add_routes(
     path="/rag_chain"
 )
 
+# http://localhost:8000/chain?query=What is stock?
+@app.get("/chain")
+def query_chain(query: str):
+    result = chain.invoke(query)
+    return result
+
+@app.get("/rag_chain")
+def query_chain(query: str):
+    result = rag_chain.invoke(query)
+    return result
+
 if __name__ == "__main__":
     import uvicorn
     
