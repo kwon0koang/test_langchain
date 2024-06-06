@@ -9,6 +9,7 @@ from langchain_core.runnables import RunnablePassthrough
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 import bs4
 from langchain_community.document_loaders import WebBaseLoader
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from llm import llm
 from constants import MY_FAISS_INDEX
 from embeddings import embeddings
@@ -26,29 +27,45 @@ retriever = vectorstore.as_retriever(search_type="similarity"
 prompt = ChatPromptTemplate.from_messages([
     ("system", """
 너는 유능한 업무 보조자야.
-다음 context를 사용해서 question에 대한 답과 출처를 심플하게 말해줘.
+다음 context를 사용해서 question에 대한 답을 말해줘.
 정답을 모르면 모른다고만 해.
 
 # question : {question}
 
-# context : {context}
+# context ========================
+{context}
+==================================
 
 # answer :
 """
     ),
 ])
 
-# extract page_content
-def get_page_contents(docs):
-    return "\n\n".join(f'{doc.page_content}' for doc in docs)
+retrieved_docs = []
+def get_page_contents_with_metadata(docs) -> str: 
+    global retrieved_docs
+    retrieved_docs = docs
+    
+    result = ""
+    for i, doc in enumerate(docs):
+        if i > 0:
+            result += "\n\n"
+        result += f"## 본문: {doc.page_content}\n### 출처: {doc.metadata['source']}"
+    return result
 
-# extract page_content with metadata
-def get_page_contents_with_metadata(docs):
-    return "\n\n".join(f'{doc.page_content} [출처 : {doc.metadata["source"]}]' for doc in docs)
+def get_metadata_sources(docs) -> str: 
+    sources = set()
+    for doc in docs:
+        sources.add(doc.metadata['source'])
+    return "\n".join(sources)
+
+def parse(ai_message: AIMessage) -> str:
+    """Parse the AI message and add source."""
+    return f"{ai_message.content}\n\n[출처]\n{get_metadata_sources(retrieved_docs)}"
 
 chain = (
     {"context": retriever | get_page_contents_with_metadata, "question": RunnablePassthrough()}
     | prompt
     | llm
-    | StrOutputParser()
+    | parse
 )
