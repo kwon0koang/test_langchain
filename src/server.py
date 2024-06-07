@@ -11,6 +11,7 @@ from langserve import add_routes
 from chain import chain as chain
 from chat import chain as chat_chain
 from rag_chain import chain as rag_chain
+from rag_chat import chain as rag_chat_chain
 from dotenv import load_dotenv
 
 # 환경변수 로드 (.env)
@@ -63,6 +64,15 @@ add_routes(
     app, 
     rag_chain, 
     path="/rag_chain"
+)
+    
+add_routes(
+    app,
+    rag_chat_chain.with_types(input_type=InputChat),
+    path="/rag_chat",
+    enable_feedback_endpoint=True,
+    enable_public_trace_link_endpoint=True,
+    playground_type="chat",
 )
 
 # http://localhost:8000/chain?query=What is stock?
