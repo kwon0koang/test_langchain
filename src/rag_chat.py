@@ -31,6 +31,7 @@ context를 사용해서 question에 대한 답을 말해줘.
 정답을 모르면 모른다고만 해.
 """)
     , MessagesPlaceholder(variable_name="messages"),
+    ("human", "{user_input}")
 ])
 
 retrieved_docs = []
@@ -45,13 +46,6 @@ def get_page_contents_with_metadata(docs) -> str:
         result += f"## 본문: {doc.page_content}\n### 출처: {doc.metadata['source']}"
     return result
 
-def replace_last_message(messages, new_item):
-    if not messages:
-        raise ValueError("List is empty")
-    new_messages = messages[:]
-    new_messages[-1] = new_item
-    return new_messages
-
 def get_new_messages_after_doc_retrieval(messages_dict):
     print("========================")
     print(f"messages_dict: {messages_dict}") # {'messages': [HumanMessage(content='라마3 성능은?')]}
@@ -64,17 +58,19 @@ def get_new_messages_after_doc_retrieval(messages_dict):
     retrieved_docs = retriever.invoke(last_human_message)
     
     new_human_message = HumanMessage(content=f"""
-# question : {last_human_message}
+<question>
+{last_human_message}
+</question>
 
-# context ========================
+<context>
 {get_page_contents_with_metadata(retrieved_docs)}
-==================================
+</context>
 
 # answer :
 """)
     
-    new_messages = replace_last_message(messages, new_human_message)
-    return {"messages": new_messages}
+    messages_without_last = messages[:-1]
+    return {"messages": messages_without_last, "user_input": new_human_message}
 
 def get_metadata_sources(docs) -> str: 
     sources = set()
