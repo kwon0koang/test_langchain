@@ -30,11 +30,13 @@ prompt = ChatPromptTemplate.from_messages([
 다음 context를 사용해서 question에 대한 답을 말해줘.
 정답을 모르면 모른다고만 해.
 
-# question : {question}
+<question>
+{question}
+</question>
 
-# context ========================
+<context>
 {context}
-==================================
+</context>
 
 # answer :
 """
