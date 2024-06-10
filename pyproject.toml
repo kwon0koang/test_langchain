@@ -23,6 +23,7 @@ langsmith = "^0.1.57"
 python-dotenv = "^1.0.1"
 langchain-google-vertexai = "^1.0.4"
 pymupdf = "^1.24.5"
+streamlit = "^1.35.0"
 
 [build-system]
 requires = ["poetry-core"]
