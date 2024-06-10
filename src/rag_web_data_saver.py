@@ -24,7 +24,7 @@ data = loader.load()
 
 text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
 splits = text_splitter.split_documents(data)
-print(f'len(splits[0].page_content) : {len(splits[1].page_content)}')
+print(f'len(splits[0].page_content) : {len(splits[0].page_content)}')
 print(f'splits : {splits}')
 
 vectorstore = FAISS.from_documents(splits,
