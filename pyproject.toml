@@ -7,7 +7,7 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.11"
-langchain = "^0.1.15"
+langchain = "^0.2.3"
 langserve = "^0.0.51"
 fastapi = "^0.110.1"
 sse-starlette = "^2.1.0"
@@ -25,6 +25,7 @@ langchain-google-vertexai = "^1.0.4"
 pymupdf = "^1.24.5"
 streamlit = "^1.35.0"
 pymupdf4llm = "^0.0.5"
+langchain-experimental = "^0.0.60"
 
 [build-system]
 requires = ["poetry-core"]
