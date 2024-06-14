@@ -21,7 +21,7 @@ vectorstore = FAISS.load_local(MY_FAISS_INDEX
                                )
 
 retriever = vectorstore.as_retriever(search_type="similarity"
-                                     , search_kwargs={"k": 5})
+                                     , search_kwargs={"k": 3})
 
 # prompt = hub.pull("rlm/rag-prompt") # https://smith.langchain.com/hub/rlm/rag-prompt
 prompt = ChatPromptTemplate.from_messages([
