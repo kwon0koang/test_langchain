@@ -17,7 +17,7 @@ class StreamHandler(BaseCallbackHandler):
         self.text += token
         self.container.markdown(self.text)
         
-st.title("My name is 권봇 🤖")
+st.title("권봇 🤖")
 
 llm = ChatOllama(model="EEVE-Korean-Instruct-10.8B-v1.0:latest")
 
@@ -29,14 +29,14 @@ prompt = ChatPromptTemplate.from_messages([
 chain = prompt | llm
         
 if "messages" not in st.session_state:
-    st.session_state.messages = [AIMessage(role="ai", content="무엇을 도와드릴까요?")]
+    st.session_state.messages = [AIMessage(type="ai", content="무엇을 도와드릴까요?")]
 
 for msg in st.session_state.messages:
     print(f"for msg in st.session_state.messages / msg.content: {msg.content}")
-    st.chat_message(msg.role).write(msg.content)
+    st.chat_message(msg.type).write(msg.content)
 
 if prompt := st.chat_input():
-    st.session_state.messages.append(HumanMessage(role="human", content=prompt))
+    st.session_state.messages.append(HumanMessage(type="human", content=prompt))
     st.chat_message("human").write(prompt)
 
     with st.chat_message("ai"):
@@ -44,4 +44,4 @@ if prompt := st.chat_input():
         stream_handler = StreamHandler(st.empty())
         response = chain.invoke({"messages": st.session_state.messages}, {"callbacks": [stream_handler]})
         time.sleep(0.1)
-        st.session_state.messages.append(AIMessage(role="ai", content=response.content))
+        st.session_state.messages.append(AIMessage(type="ai", content=response.content))
