@@ -45,7 +45,7 @@ def get_page_contents_with_metadata(docs) -> str:
         if i > 0:
             result += "\n\n"
         print(f"doc: {doc}")
-        result += f"## 본문: {doc.page_content}\n### 출처: {doc.metadata['source']} ({doc.metadata['page']}페이지)"
+        result += f"## 본문: {doc.page_content}\n### 출처: {doc.metadata['source']} ({int(doc.metadata['page']) + 1}페이지)"
     return result
 
 def get_new_messages_after_doc_retrieval(messages_dict):
@@ -79,7 +79,7 @@ def get_metadata_sources(docs) -> str:
     for doc in docs:
         file_path = doc.metadata['source']
         file_name = os.path.basename(file_path)
-        sources.add(f"{file_name} ({doc.metadata['page']}페이지)")
+        sources.add(f"{file_name} ({int(doc.metadata['page']) + 1}페이지)")
     return "\n".join(sources)
 
 def parse(ai_message: AIMessage) -> str:
