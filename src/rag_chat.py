@@ -11,11 +11,11 @@ import bs4
 from langchain_community.document_loaders import WebBaseLoader
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from llm import llm
-from constants import MY_FAISS_INDEX
+from constants import MY_NEWS_INDEX
 from embeddings import embeddings
 
 # 로컬 DB 불러오기
-vectorstore = FAISS.load_local(MY_FAISS_INDEX
+vectorstore = FAISS.load_local(MY_NEWS_INDEX
                                , embeddings
                                , allow_dangerous_deserialization=True
                                )

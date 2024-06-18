@@ -1,6 +1,17 @@
+import os
+import sys
+
+# 현재 파일 경로
+current_dir = os.path.dirname(os.path.abspath(__file__))
+# src 디렉토리 경로
+parent_dir = os.path.abspath(os.path.join(current_dir, os.pardir))
+# src 디렉토리를 sys.path에 추가
+sys.path.append(parent_dir)
+
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain.schema import ChatMessage
 from langchain_openai import ChatOpenAI
+import json
 from langchain_community.chat_models import ChatOllama
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain_community.vectorstores import FAISS
@@ -10,15 +21,15 @@ import streamlit as st
 from streamlit.runtime.state import SessionStateProxy
 from langchain_core.vectorstores import VectorStoreRetriever
 import time
-import os
 from langchain_core.runnables import RunnablePassthrough
 from langchain.tools.retriever import create_retriever_tool
 from langchain_core.pydantic_v1 import BaseModel, Field
-from constants import MY_FAISS_INDEX, MY_PDF_INDEX
+from constants import MY_NEWS_INDEX, MY_PDF_INDEX
 from embeddings import embeddings
 
-WEB_TOOL_NAME = "web_search"
-PDF_TOOL_NAME = "pdf_search"
+TOOL_AUTO = "auto"
+SAVED_NEWS_SEARCH_TOOL_NAME = "saved_news_search"
+PDF_SEARCH_TOOL_NAME = "pdf_search"
 
 class StreamHandler(BaseCallbackHandler):
     def __init__(self, container, initial_text=""):
@@ -44,11 +55,13 @@ chain = query | llm
 
 # ==========================================================================================================================================================================================
 
+# 사이드바에 tool 목록 셋팅
+
 options = [
-    (None, '-'),
-    ('auto', 'AUTO'),
-    (WEB_TOOL_NAME, 'WEB SEARCH'),
-    (PDF_TOOL_NAME, 'PDF SEARCH'),
+    (None, '선택 안함'),
+    (SAVED_NEWS_SEARCH_TOOL_NAME, '저장된 뉴스 검색'),
+    (PDF_SEARCH_TOOL_NAME, '저장된 PDF 검색'),
+    (TOOL_AUTO, '도구 자동 선택 (BETA)'),
 ]
 
 option_names, option_display_names = zip(*options)  # 옵션 코드를 추출
@@ -58,7 +71,7 @@ selected_option_name = next(name for name, display_name in options if display_na
 # ==========================================================================================================================================================================================
 
 # 로컬 DB 불러오기
-vectorstore1 = FAISS.load_local(MY_FAISS_INDEX, 
+vectorstore1 = FAISS.load_local(MY_NEWS_INDEX, 
                                embeddings, 
                                allow_dangerous_deserialization=True)
 retriever1 = vectorstore1.as_retriever(search_type="similarity", search_kwargs={"k": 3}) # 유사도 높은 3문장 추출
@@ -69,7 +82,7 @@ retriever2 = vectorstore2.as_retriever(search_type="similarity", search_kwargs={
 
 retriever_tool1 = create_retriever_tool(
     retriever1,
-    name="web_search",
+    name="saved_news_search",
     description="엔비디아, 퍼플렉시티, 라마3 관련 정보를 검색한다. 엔비디아, 퍼플렉시티, 라마3 관련 정보는 이 도구를 사용해야 한다",
 )
 
@@ -103,6 +116,7 @@ def get_page_contents_with_metadata(docs) -> str:
         result += f"## 본문: {doc.page_content}\n### 출처: {doc.metadata['source']}"
     return result
 
+# tool명으로 retriever 찾기
 def get_retriever_by_tool_name(name) -> VectorStoreRetriever:
     print(f"get_retriever_by_tool_name / name: {name}")
     for tool in tools:
@@ -111,6 +125,7 @@ def get_retriever_by_tool_name(name) -> VectorStoreRetriever:
             return tool.func.keywords['retriever']
     return None
 
+# 문서 검색 후 새 메시지 리스트 가져오기
 def get_new_messages_after_doc_retrieval(messages_dict) -> dict:
     print("========================")
     print(f"messages_dict: {messages_dict}") # {'messages': [HumanMessage(content='라마3 성능은?')]}
@@ -119,9 +134,25 @@ def get_new_messages_after_doc_retrieval(messages_dict) -> dict:
     last_human_message = messages[-1].content
     print(f"last_human_message: {last_human_message}")
     
-    # selected_tool = chain_for_select_tool.invoke(last_human_message) # LLM 한테 tool 선택하게 하기
-    selected_tool = selected_option_name
+    selected_tool = ""
+    if TOOL_AUTO == selected_option_name:
+        selected_tool = chain_for_select_tool.invoke(last_human_message) # LLM 한테 tool 선택하게 하기
+        print(f"chain_for_select_tool.invoke 결과 / selected_tool: {selected_tool}")
+        # 후보정 Start ============================
+        # 가끔 "웹 검색(saved_news_search)" 요런 형식으로 말함 ㅜ
+        if PDF_SEARCH_TOOL_NAME in selected_tool:
+            selected_tool = PDF_SEARCH_TOOL_NAME
+        elif SAVED_NEWS_SEARCH_TOOL_NAME in selected_tool:
+            selected_tool = SAVED_NEWS_SEARCH_TOOL_NAME
+        else:
+            selected_tool = ""
+        # 후보정 End ============================
+    else:
+        selected_tool = selected_option_name
     retriever = get_retriever_by_tool_name(selected_tool)
+    
+    if retriever is None:
+        raise ValueError(f"{selected_tool} retriever가 없어요")
     
     global retrieved_docs
     retrieved_docs = retriever.invoke(last_human_message)
@@ -141,6 +172,7 @@ def get_new_messages_after_doc_retrieval(messages_dict) -> dict:
     messages_without_last = messages[:-1]
     return {"messages": messages_without_last, "user_input": new_human_message}
 
+# 출처 가져오기
 def get_metadata_sources(docs) -> str: 
     sources = set()
     for doc in docs:
@@ -153,6 +185,7 @@ def get_metadata_sources(docs) -> str:
         sources.add(source)
     return "\n\n".join(sources)
 
+# AI 메시지 뒤에 출처 붙이기
 def parse(ai_message: AIMessage) -> str:
     """Parse the AI message and add source."""
     return f"{ai_message.content}\n\n[출처]\n\n{get_metadata_sources(retrieved_docs)}"
@@ -166,10 +199,13 @@ agent_chain = (
 
 # ==========================================================================================================================================================================================
 
+# 적합한 tool 추출 위한 프롬프트
 prompt_for_select_tool = ChatPromptTemplate.from_messages([
     ("system", """
-Select one ‘tool’ to indicate which tool you would use to answer the ‘question’ correctly.
-Say only the ‘name’ of the ‘tool’ without saying anything else.
+You have "tools" that can answer "question".
+Using "tools" as a guide, choose a "tool" that can answer "question".
+Without saying anything else, say the "tool_name" of the selected "tool" in English.
+If there is no appropriate "tool", say "None".
 
 <tools>
 {tools}
@@ -184,11 +220,13 @@ Say only the ‘name’ of the ‘tool’ without saying anything else.
     )
 ])
 
+# tool 목록 가져오기
 def get_tools(query):
-    tool_info = [(tool.name, tool.description) for tool in tools]
-    print(f"get_tools / {tool_info}") # [('web_search', '엔비디아, 퍼플렉시티, 라마3 관련 정보를 검색한다'), ('pdf_search', '생성형 AI 신기술 도입에 따른 선거 규제 연구 관련 정보를 검색한다')]
-    return str(tool_info)
+    tool_info = [{"tool_name": tool.name, "tool_description": tool.description} for tool in tools]
+    print(f"get_tools / {tool_info}")
+    return json.dumps(tool_info, ensure_ascii=False)
 
+# 적합한 tool 추출 위한 체인
 chain_for_select_tool = (
     {"tools": get_tools, "question": RunnablePassthrough()}
     | prompt_for_select_tool 
@@ -226,12 +264,40 @@ if query:
         response = ""
         print(f"selected_option_name: {selected_option_name}")
         if selected_option_name:
-            with st.spinner("검색 중이에요 🔍"):
-                response = agent_chain.invoke({"messages": st.session_state.messages})
-                print(f"agent_chain.invoke / response: {response}")
-                st.markdown(response)
-                time.sleep(0.1)
-                st.session_state.messages.append(AIMessage(type="ai", content=response))
+            try:
+                with st.spinner("검색 중이에요 🔍"):
+                    response = agent_chain.invoke({"messages": st.session_state.messages})
+                    print(f"agent_chain.invoke / response: {response}")
+                    st.markdown(response)
+                    time.sleep(0.1)
+                    st.session_state.messages.append(AIMessage(type="ai", content=response))
+            except Exception as e:
+                st.write("적절한 검색 도구를 찾지 못했어요, 아는 만큼 답변할게요 🫠")
+                # 도구 찾기에 실패했기 때문에 LLM한테 그냥 물어보기
+                with st.spinner(""):
+                    response = chain.invoke({"messages": st.session_state.messages}, {"callbacks": [stream_handler]})
+                    print(f"chain.invoke / response: {response}")
+                    time.sleep(0.1)
+                    st.session_state.messages.append(AIMessage(type="ai", content=response.content))
+            
+            
+            
+            
+            # with st.spinner("검색 중이에요 🔍"):
+            #     try:
+            #         response = agent_chain.invoke({"messages": st.session_state.messages})
+            #         print(f"agent_chain.invoke / response: {response}")
+            #         st.markdown(response)
+            #         time.sleep(0.1)
+            #         st.session_state.messages.append(AIMessage(type="ai", content=response))
+            #     except Exception as e:
+            #         st.write("적절한 검색 도구를 찾지 못했어요 😔")
+            #         # 도구 찾기에 실패했기 때문에 LLM한테 그냥 물어보기
+            #         with st.spinner(""):
+            #             response = chain.invoke({"messages": st.session_state.messages}, {"callbacks": [stream_handler]})
+            #             print(f"chain.invoke / response: {response}")
+            #             time.sleep(0.1)
+            #             st.session_state.messages.append(AIMessage(type="ai", content=response.content))
         else:
             with st.spinner(""):
                 response = chain.invoke({"messages": st.session_state.messages}, {"callbacks": [stream_handler]})

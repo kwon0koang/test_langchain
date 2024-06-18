@@ -13,13 +13,13 @@ import os
 from langchain_core.runnables import RunnablePassthrough
 from langchain.tools.retriever import create_retriever_tool
 from langchain_core.pydantic_v1 import BaseModel, Field
-from constants import MY_FAISS_INDEX, MY_PDF_INDEX
+from constants import MY_NEWS_INDEX, MY_PDF_INDEX
 from embeddings import embeddings
 
 llm = ChatOllama(model="EEVE-Korean-Instruct-10.8B-v1.0:latest", temperature=0)
 
 # 로컬 DB 불러오기
-vectorstore1 = FAISS.load_local(MY_FAISS_INDEX, 
+vectorstore1 = FAISS.load_local(MY_NEWS_INDEX, 
                                embeddings, 
                                allow_dangerous_deserialization=True)
 retriever1 = vectorstore1.as_retriever(search_type="similarity", search_kwargs={"k": 3}) # 유사도 높은 3문장 추출
@@ -30,7 +30,7 @@ retriever2 = vectorstore2.as_retriever(search_type="similarity", search_kwargs={
 
 retriever_tool1 = create_retriever_tool(
     retriever1,
-    name="web_search",
+    name="saved_news_search",
     description="엔비디아, 퍼플렉시티, 라마3 관련 정보를 검색한다. 엔비디아, 퍼플렉시티, 라마3 관련 정보는 이 도구를 사용해야 한다",
 )
 

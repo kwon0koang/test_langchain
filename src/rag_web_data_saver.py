@@ -4,7 +4,7 @@ from langchain_community.embeddings import OllamaEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 import bs4
 from langchain_community.document_loaders import WebBaseLoader
-from constants import MY_FAISS_INDEX
+from constants import MY_NEWS_INDEX
 from embeddings import embeddings
 
 # BeautifulSoup: HTML 및 XML 문서를 파싱하고 구문 분석하는 데 사용되는 파이썬 라이브러리. 주로 웹 스크레이핑(웹 페이지에서 데이터 추출) 작업에서 사용되며, 웹 페이지의 구조를 이해하고 필요한 정보를 추출하는 데 유용
@@ -33,4 +33,4 @@ vectorstore = FAISS.from_documents(splits,
                                   )
 
 # 로컬에 DB 저장
-vectorstore.save_local(MY_FAISS_INDEX)
+vectorstore.save_local(MY_NEWS_INDEX)
