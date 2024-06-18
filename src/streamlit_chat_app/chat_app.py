@@ -5,6 +5,7 @@ from langchain_community.chat_models import ChatOllama
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain_community.vectorstores import FAISS
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.output_parsers import StrOutputParser
 import streamlit as st
 from streamlit.runtime.state import SessionStateProxy
 from langchain_core.vectorstores import VectorStoreRetriever
@@ -15,7 +16,6 @@ from langchain.tools.retriever import create_retriever_tool
 from langchain_core.pydantic_v1 import BaseModel, Field
 from constants import MY_FAISS_INDEX, MY_PDF_INDEX
 from embeddings import embeddings
-# from streamlit_chat_app.agent_chain import agent_chain
 
 WEB_TOOL_NAME = "web_search"
 PDF_TOOL_NAME = "pdf_search"
@@ -46,15 +46,14 @@ chain = query | llm
 
 options = [
     (None, '-'),
-    (WEB_TOOL_NAME, 'WEB'),
-    (PDF_TOOL_NAME, 'PDF'),
+    ('auto', 'AUTO'),
+    (WEB_TOOL_NAME, 'WEB SEARCH'),
+    (PDF_TOOL_NAME, 'PDF SEARCH'),
 ]
 
 option_names, option_display_names = zip(*options)  # 옵션 코드를 추출
 selected_option_display_name = st.sidebar.selectbox('도구 🛠️', option_display_names)
 selected_option_name = next(name for name, display_name in options if display_name == selected_option_display_name)
-def get_selected_option_name() -> str:
-    return str(selected_option_name)
 
 # ==========================================================================================================================================================================================
 
@@ -120,6 +119,7 @@ def get_new_messages_after_doc_retrieval(messages_dict) -> dict:
     last_human_message = messages[-1].content
     print(f"last_human_message: {last_human_message}")
     
+    # selected_tool = chain_for_select_tool.invoke(last_human_message) # LLM 한테 tool 선택하게 하기
     selected_tool = selected_option_name
     retriever = get_retriever_by_tool_name(selected_tool)
     
@@ -166,8 +166,46 @@ agent_chain = (
 
 # ==========================================================================================================================================================================================
 
+prompt_for_select_tool = ChatPromptTemplate.from_messages([
+    ("system", """
+Select one ‘tool’ to indicate which tool you would use to answer the ‘question’ correctly.
+Say only the ‘name’ of the ‘tool’ without saying anything else.
+
+<tools>
+{tools}
+</tools>
+
+<question>
+{question}
+</question>
+
+# answer :
+"""
+    )
+])
+
+def get_tools(query):
+    tool_info = [(tool.name, tool.description) for tool in tools]
+    print(f"get_tools / {tool_info}") # [('web_search', '엔비디아, 퍼플렉시티, 라마3 관련 정보를 검색한다'), ('pdf_search', '생성형 AI 신기술 도입에 따른 선거 규제 연구 관련 정보를 검색한다')]
+    return str(tool_info)
+
+chain_for_select_tool = (
+    {"tools": get_tools, "question": RunnablePassthrough()}
+    | prompt_for_select_tool 
+    | llm
+    | StrOutputParser()
+    )
+
+# ==========================================================================================================================================================================================
+
 if "messages" not in st.session_state:
-    st.session_state.messages = [AIMessage(type="ai", content="무엇을 도와드릴까요?")]
+    # st.session_state.messages = [AIMessage(type="ai", content="무엇을 도와드릴까요?")]
+    st.session_state.messages = []
+
+# 10개까지만 표시되도록 메시지 수 제한
+MAX_MESSAGES_COUNT = 10
+if len(st.session_state.messages) >= MAX_MESSAGES_COUNT:
+    st.session_state.messages = st.session_state.messages[2:]
 
 for msg in st.session_state.messages:
     print(f"for msg in st.session_state.messages / msg.content: {msg.content}")
@@ -188,11 +226,6 @@ if query:
         response = ""
         print(f"selected_option_name: {selected_option_name}")
         if selected_option_name:
-            # response = agent_chain.invoke({"messages": st.session_state.messages}, {"callbacks": [stream_handler]})
-            # print(f"agent_chain.invoke / response: {response}")
-            # time.sleep(0.1)
-            # st.write(response)
-            # st.session_state.messages.append(AIMessage(type="ai", content=response))
             with st.spinner("검색 중이에요 🔍"):
                 response = agent_chain.invoke({"messages": st.session_state.messages})
                 print(f"agent_chain.invoke / response: {response}")
@@ -205,4 +238,22 @@ if query:
                 print(f"chain.invoke / response: {response}")
                 time.sleep(0.1)
                 st.session_state.messages.append(AIMessage(type="ai", content=response.content))
-        
+
+# # 다운로드할 파일 경로 지정
+# file_path = f"{os.getcwd()}/assets/생성형_AI_신기술_도입에_따른_선거_규제_연구_결과보고서.pdf"
+
+# # 파일이 존재하는지 확인
+# if os.path.exists(file_path):
+#     # 파일 내용 로드
+#     with open(file_path, "rb") as file:
+#         file_contents = file.read()
+
+#     # 파일 다운로드 버튼 추가
+#     st.download_button(
+#         label="파일 다운로드",
+#         data=file_contents,
+#         file_name=os.path.basename(file_path),
+#         mime="text/plain"  # 파일 형식에 맞게 변경하세요. 예: 'application/pdf', 'image/png'
+#     )
+# else:
+#     st.error("파일을 찾을 수 없습니다.")

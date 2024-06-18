@@ -15,7 +15,6 @@ from langchain.tools.retriever import create_retriever_tool
 from langchain_core.pydantic_v1 import BaseModel, Field
 from constants import MY_FAISS_INDEX, MY_PDF_INDEX
 from embeddings import embeddings
-from streamlit_chat_app.chat_app import get_selected_option_name
 
 llm = ChatOllama(model="EEVE-Korean-Instruct-10.8B-v1.0:latest", temperature=0)
 
@@ -81,7 +80,8 @@ def get_new_messages_after_doc_retrieval(messages_dict) -> dict:
     last_human_message = messages[-1].content
     print(f"last_human_message: {last_human_message}")
     
-    selected_tool = get_selected_option_name()
+    # todo kyk
+    selected_tool = "todo kyk" # get_selected_option_name()
     retriever = get_retriever_by_tool_name(selected_tool)
     
     global retrieved_docs
