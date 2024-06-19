@@ -8,6 +8,7 @@ from langchain_core.messages.base import BaseMessage
 from langserve.schema import CustomUserType
 from typing import Tuple
 from langserve import add_routes
+from llm import llm
 from chain import chain as chain
 from chat import chain as chat_chain
 from rag_chain import chain as rag_chain
@@ -37,6 +38,12 @@ app.add_middleware(
 @app.get("/")
 async def redirect_root_to_docs():
     return RedirectResponse("chain/playground")
+
+add_routes(
+    app, 
+    llm, 
+    path="/llm"
+)
 
 add_routes(
     app, 
