@@ -31,7 +31,7 @@ TOOL_AUTO = "auto"
 SAVED_NEWS_SEARCH_TOOL_NAME = "saved_news_search"
 PDF_SEARCH_TOOL_NAME = "pdf_search"
 
-class StreamHandler(BaseCallbackHandler):
+class StreamCallback(BaseCallbackHandler):
     def __init__(self, container, initial_text=""):
         self.container = container
         self.text = initial_text
@@ -44,7 +44,7 @@ class StreamHandler(BaseCallbackHandler):
         
 st.title("권봇 🤖")
 
-llm = ChatOllama(model="EEVE-Korean-Instruct-10.8B-v1.0:latest", temperature=0)
+eeve_llm = ChatOllama(model="EEVE-Korean-Instruct-10.8B-v1.0:latest", temperature=0)
 llama_llm = ChatOllama(model="llama3:8b", temperature=0)
 # qwen2_llm = ChatOllama(model="qwen2:latest", temperature=0)
 
@@ -53,7 +53,7 @@ query = ChatPromptTemplate.from_messages([
     MessagesPlaceholder(variable_name="messages"),
 ])
 
-chain = query | llm
+chain = query | eeve_llm
 
 # ==========================================================================================================================================================================================
 
@@ -205,7 +205,7 @@ def parse(ai_message: AIMessage) -> str:
 agent_chain = (
     get_new_messages_after_doc_retrieval
     | agent_prompt
-    | llm
+    | eeve_llm
     | parse
 )
 
@@ -273,7 +273,7 @@ if query:
     with st.chat_message("ai"):
         print(f"messages: {st.session_state.messages}")
         
-        stream_handler = StreamHandler(st.empty())
+        stream_handler = StreamCallback(st.empty())
         
         response = ""
         print(f"selected_option_name: {selected_option_name}")
