@@ -48,13 +48,6 @@ eeve_llm = ChatOllama(model="EEVE-Korean-Instruct-10.8B-v1.0:latest", temperatur
 llama_llm = ChatOllama(model="llama3:8b", temperature=0)
 # qwen2_llm = ChatOllama(model="qwen2:latest", temperature=0)
 
-query = ChatPromptTemplate.from_messages([
-    ("system", "You are a helpful, professional assistant named 권봇. answer me in Korean no matter what"),
-    MessagesPlaceholder(variable_name="messages"),
-])
-
-chain = query | eeve_llm
-
 # ==========================================================================================================================================================================================
 
 # 사이드바에 tool 목록 셋팅
@@ -273,10 +266,19 @@ if query:
     with st.chat_message("ai"):
         print(f"messages: {st.session_state.messages}")
         
-        stream_handler = StreamCallback(st.empty())
+        streaming_eeve_llm = ChatOllama(model="EEVE-Korean-Instruct-10.8B-v1.0:latest"
+                            , temperature=0
+                            , callbacks=[StreamCallback(st.empty(), initial_text="")]
+                            )
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", "You are a helpful, professional assistant named 권봇. answer me in Korean no matter what"),
+            MessagesPlaceholder(variable_name="messages"),
+        ])
+        streaming_chain = prompt | streaming_eeve_llm
         
         response = ""
         print(f"selected_option_name: {selected_option_name}")
+        
         if selected_option_name:
             try:
                 with st.spinner("검색 중이에요 🔍"):
@@ -286,35 +288,19 @@ if query:
                     time.sleep(0.1)
                     st.session_state.messages.append(AIMessage(type="ai", content=response))
             except Exception as e:
+                print(f"error: {e}")
                 st.write("적절한 검색 도구를 찾지 못했어요, 아는 만큼 답변할게요 🫠")
                 # 도구 찾기에 실패했기 때문에 LLM한테 그냥 물어보기
                 with st.spinner(""):
-                    response = chain.invoke({"messages": st.session_state.messages}, {"callbacks": [stream_handler]})
+                    # response = chain.invoke({"messages": st.session_state.messages}, {"callbacks": [stream_handler]})
+                    response = streaming_chain.invoke({"messages": st.session_state.messages})
                     print(f"chain.invoke / response: {response}")
                     time.sleep(0.1)
                     st.session_state.messages.append(AIMessage(type="ai", content=response.content))
-            
-            
-            
-            
-            # with st.spinner("검색 중이에요 🔍"):
-            #     try:
-            #         response = agent_chain.invoke({"messages": st.session_state.messages})
-            #         print(f"agent_chain.invoke / response: {response}")
-            #         st.markdown(response)
-            #         time.sleep(0.1)
-            #         st.session_state.messages.append(AIMessage(type="ai", content=response))
-            #     except Exception as e:
-            #         st.write("적절한 검색 도구를 찾지 못했어요 😔")
-            #         # 도구 찾기에 실패했기 때문에 LLM한테 그냥 물어보기
-            #         with st.spinner(""):
-            #             response = chain.invoke({"messages": st.session_state.messages}, {"callbacks": [stream_handler]})
-            #             print(f"chain.invoke / response: {response}")
-            #             time.sleep(0.1)
-            #             st.session_state.messages.append(AIMessage(type="ai", content=response.content))
         else:
             with st.spinner(""):
-                response = chain.invoke({"messages": st.session_state.messages}, {"callbacks": [stream_handler]})
+                # response = chain.invoke({"messages": st.session_state.messages}, {"callbacks": [stream_handler]})
+                response = streaming_chain.invoke({"messages": st.session_state.messages})
                 print(f"chain.invoke / response: {response}")
                 time.sleep(0.1)
                 st.session_state.messages.append(AIMessage(type="ai", content=response.content))
