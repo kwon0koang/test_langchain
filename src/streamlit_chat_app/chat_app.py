@@ -26,22 +26,9 @@ from langchain.tools.retriever import create_retriever_tool
 from langchain_core.pydantic_v1 import BaseModel, Field
 from constants import MY_NEWS_INDEX, MY_PDF_INDEX
 from embeddings import embeddings
+from callbacks import StreamCallback
+from tools import tools, TOOL_AUTO, SAVED_NEWS_SEARCH_TOOL_NAME, PDF_SEARCH_TOOL_NAME
 
-TOOL_AUTO = "auto"
-SAVED_NEWS_SEARCH_TOOL_NAME = "saved_news_search"
-PDF_SEARCH_TOOL_NAME = "pdf_search"
-
-class StreamCallback(BaseCallbackHandler):
-    def __init__(self, container, initial_text=""):
-        self.container = container
-        self.text = initial_text
-
-    def on_llm_new_token(self, token: str, **kwargs) -> None:
-        self.text += token
-        # print(f"kyk / token: [{token}] / text: {self.text}")
-        self.container.markdown(self.text)
-        # self.container.markdown(self.text, unsafe_allow_html=True)
-        
 st.title("권봇 🤖")
 
 eeve_llm = ChatOllama(model="EEVE-Korean-Instruct-10.8B-v1.0:latest", temperature=0)
@@ -59,45 +46,74 @@ options = [
     (TOOL_AUTO, '도구 자동 선택 (BETA)'),
 ]
 
-option_names, option_display_names = zip(*options)  # 옵션 코드를 추출
-selected_option_display_name = st.sidebar.selectbox('도구 🛠️', option_display_names)
-selected_option_name = next(name for name, display_name in options if display_name == selected_option_display_name)
+# 옵션명 추출
+option_names, option_display_names = zip(*options)
+
+if 'selected_option_name' not in st.session_state:
+    st.session_state.selected_option_name = None
+
+# 선택된 옵션 업데이트 함수
+def update_selected_option():
+    selected_option_display_name = st.session_state.selected_option_display_name
+    st.session_state.selected_option_name = next(name for name, display_name in options if display_name == selected_option_display_name)
+
+# 사이드바에 selectbox 생성
+selected_option_display_name = st.sidebar.selectbox(
+    '도구 🛠️',
+    option_display_names,
+    on_change=update_selected_option,
+    key='selected_option_display_name'
+)
 
 # ==========================================================================================================================================================================================
 
-# 로컬 DB 불러오기
-vectorstore1 = FAISS.load_local(MY_NEWS_INDEX, 
-                               embeddings, 
-                               allow_dangerous_deserialization=True)
-retriever1 = vectorstore1.as_retriever(search_type="similarity", search_kwargs={"k": 3}) # 유사도 높은 3문장 추출
-vectorstore2 = FAISS.load_local(MY_PDF_INDEX, 
-                               embeddings, 
-                               allow_dangerous_deserialization=True)
-retriever2 = vectorstore2.as_retriever(search_type="similarity", search_kwargs={"k": 3}) # 유사도 높은 3문장 추출
+# 적합한 tool 추출 위한 프롬프트
+prompt_for_select_tool = ChatPromptTemplate.from_messages([
+    ("system", """
+You have "tools" that can answer "question".
+Using "tools" as a guide, choose a "tool" that can answer "question".
+Without saying anything else, say the "tool_name" of the selected "tool" in English.
+If there is no appropriate "tool", say "None".
 
-retriever_tool1 = create_retriever_tool(
-    retriever1,
-    name="saved_news_search",
-    description="""
-아래와 같은 정보를 검색할 때에는 이 도구를 사용해야 한다
-- 엔비디아의 스타트업 인수
-- 퍼플렉시티 관련 내용 (회사가치, 투자 등)
-- 라마3 관련 내용
-""",
-)
+<tools>
+{tools}
+</tools>
 
-retriever_tool2 = create_retriever_tool(
-    retriever2,
-    name="pdf_search",
-    description="""
-다음과 같은 정보를 검색할 때에는 이 도구를 사용해야 한다
-- 생성형 AI 신기술 도입에 따른 선거 규제 연구
-- 생성 AI 규제 연구
-- 생성 AI 연구
+<question>
+{question}
+</question>
+
+# answer :
 """
-)
+    )
+])
 
-tools = [retriever_tool1, retriever_tool2]
+# tool 목록 가져오기
+def get_tools(query):
+    tool_info = [{"tool_name": tool.name, "tool_description": tool.description} for tool in tools]
+    print(f"get_tools / {tool_info}")
+    return json.dumps(tool_info, ensure_ascii=False)
+
+# tool명으로 retriever 찾기
+def get_retriever_by_tool_name(name) -> VectorStoreRetriever:
+    print(f"get_retriever_by_tool_name / name: {name}")
+    for tool in tools:
+        if tool.name == name:
+            # print(tool.func) # functools.partial(<function _get_relevant_documents at 0x1487dd6c0>, retriever=VectorStoreRetriever(tags=['FAISS', 'HuggingFaceEmbeddings'], vectorstore=<langchain_community.vectorstores.faiss.FAISS object at 0x317e52ea0>, search_kwargs={'k': 5}), document_prompt=PromptTemplate(input_variables=['page_content'], template='{page_content}'), document_separator='\n\n')
+            return tool.func.keywords['retriever']
+    return None
+
+# 적합한 tool 추출 위한 체인
+chain_for_select_tool = (
+    {"tools": get_tools, "question": RunnablePassthrough()}
+    | prompt_for_select_tool 
+    # | llm
+    | llama_llm
+    # | qwen2_llm
+    | StrOutputParser()
+    )
+
+# ==========================================================================================================================================================================================
 
 agent_prompt = ChatPromptTemplate.from_messages([
     ("system", """
@@ -121,14 +137,6 @@ def get_page_contents_with_metadata(docs) -> str:
         result += f"## 본문: {doc.page_content}\n### 출처: {doc.metadata['source']}"
     return result
 
-# tool명으로 retriever 찾기
-def get_retriever_by_tool_name(name) -> VectorStoreRetriever:
-    print(f"get_retriever_by_tool_name / name: {name}")
-    for tool in tools:
-        if tool.name == name:
-            # print(tool.func) # functools.partial(<function _get_relevant_documents at 0x1487dd6c0>, retriever=VectorStoreRetriever(tags=['FAISS', 'HuggingFaceEmbeddings'], vectorstore=<langchain_community.vectorstores.faiss.FAISS object at 0x317e52ea0>, search_kwargs={'k': 5}), document_prompt=PromptTemplate(input_variables=['page_content'], template='{page_content}'), document_separator='\n\n')
-            return tool.func.keywords['retriever']
-    return None
 
 # 문서 검색 후 새 메시지 리스트 가져오기
 def get_new_messages_after_doc_retrieval(messages_dict) -> dict:
@@ -140,7 +148,7 @@ def get_new_messages_after_doc_retrieval(messages_dict) -> dict:
     print(f"last_human_message: {last_human_message}")
     
     selected_tool = ""
-    if TOOL_AUTO == selected_option_name:
+    if TOOL_AUTO == st.session_state.selected_option_name:
         selected_tool = chain_for_select_tool.invoke(last_human_message) # LLM 한테 tool 선택하게 하기
         print(f"chain_for_select_tool.invoke 결과 / selected_tool: {selected_tool}")
         # 후보정 Start ============================
@@ -153,7 +161,7 @@ def get_new_messages_after_doc_retrieval(messages_dict) -> dict:
             selected_tool = ""
         # 후보정 End ============================
     else:
-        selected_tool = selected_option_name
+        selected_tool = st.session_state.selected_option_name
     retriever = get_retriever_by_tool_name(selected_tool)
     
     if retriever is None:
@@ -204,45 +212,6 @@ agent_chain = (
 
 # ==========================================================================================================================================================================================
 
-# 적합한 tool 추출 위한 프롬프트
-prompt_for_select_tool = ChatPromptTemplate.from_messages([
-    ("system", """
-You have "tools" that can answer "question".
-Using "tools" as a guide, choose a "tool" that can answer "question".
-Without saying anything else, say the "tool_name" of the selected "tool" in English.
-If there is no appropriate "tool", say "None".
-
-<tools>
-{tools}
-</tools>
-
-<question>
-{question}
-</question>
-
-# answer :
-"""
-    )
-])
-
-# tool 목록 가져오기
-def get_tools(query):
-    tool_info = [{"tool_name": tool.name, "tool_description": tool.description} for tool in tools]
-    print(f"get_tools / {tool_info}")
-    return json.dumps(tool_info, ensure_ascii=False)
-
-# 적합한 tool 추출 위한 체인
-chain_for_select_tool = (
-    {"tools": get_tools, "question": RunnablePassthrough()}
-    | prompt_for_select_tool 
-    # | llm
-    | llama_llm
-    # | qwen2_llm
-    | StrOutputParser()
-    )
-
-# ==========================================================================================================================================================================================
-
 if "messages" not in st.session_state:
     # st.session_state.messages = [AIMessage(type="ai", content="무엇을 도와드릴까요?")]
     st.session_state.messages = []
@@ -277,9 +246,9 @@ if query:
         streaming_chain = prompt | streaming_eeve_llm
         
         response = ""
-        print(f"selected_option_name: {selected_option_name}")
+        print(f"selected_option_name: {st.session_state.selected_option_name}")
         
-        if selected_option_name:
+        if st.session_state.selected_option_name:
             try:
                 with st.spinner("검색 중이에요 🔍"):
                     response = agent_chain.invoke({"messages": st.session_state.messages})
@@ -304,22 +273,3 @@ if query:
                 print(f"chain.invoke / response: {response}")
                 time.sleep(0.1)
                 st.session_state.messages.append(AIMessage(type="ai", content=response.content))
-
-# # 다운로드할 파일 경로 지정
-# file_path = f"{os.getcwd()}/assets/생성형_AI_신기술_도입에_따른_선거_규제_연구_결과보고서.pdf"
-
-# # 파일이 존재하는지 확인
-# if os.path.exists(file_path):
-#     # 파일 내용 로드
-#     with open(file_path, "rb") as file:
-#         file_contents = file.read()
-
-#     # 파일 다운로드 버튼 추가
-#     st.download_button(
-#         label="파일 다운로드",
-#         data=file_contents,
-#         file_name=os.path.basename(file_path),
-#         mime="text/plain"  # 파일 형식에 맞게 변경하세요. 예: 'application/pdf', 'image/png'
-#     )
-# else:
-#     st.error("파일을 찾을 수 없습니다.")
