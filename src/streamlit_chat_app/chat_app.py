@@ -44,7 +44,9 @@ class StreamHandler(BaseCallbackHandler):
         
 st.title("권봇 🤖")
 
-llm = ChatOllama(model="EEVE-Korean-Instruct-10.8B-v1.0:latest", temperature=0.1)
+llm = ChatOllama(model="EEVE-Korean-Instruct-10.8B-v1.0:latest", temperature=0)
+llama_llm = ChatOllama(model="llama3:8b", temperature=0)
+qwen2_llm = ChatOllama(model="qwen2:latest", temperature=0)
 
 query = ChatPromptTemplate.from_messages([
     ("system", "You are a helpful, professional assistant named 권봇. answer me in Korean no matter what"),
@@ -181,7 +183,7 @@ def get_metadata_sources(docs) -> str:
         if (is_pdf):
             file_path = doc.metadata['source']
             file_name = os.path.basename(file_path)
-            source = f"{file_name} ({int(doc.metadata['page']) + 1}페이지)"
+            source = f"[{file_name} ({int(doc.metadata['page']) + 1}페이지)](file://{file_path})"
         sources.add(source)
     return "\n\n".join(sources)
 
@@ -230,7 +232,9 @@ def get_tools(query):
 chain_for_select_tool = (
     {"tools": get_tools, "question": RunnablePassthrough()}
     | prompt_for_select_tool 
-    | llm
+    # | llm
+    | llama_llm
+    # | qwen2_llm
     | StrOutputParser()
     )
 
