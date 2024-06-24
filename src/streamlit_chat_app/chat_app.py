@@ -46,7 +46,7 @@ st.title("권봇 🤖")
 
 llm = ChatOllama(model="EEVE-Korean-Instruct-10.8B-v1.0:latest", temperature=0)
 llama_llm = ChatOllama(model="llama3:8b", temperature=0)
-qwen2_llm = ChatOllama(model="qwen2:latest", temperature=0)
+# qwen2_llm = ChatOllama(model="qwen2:latest", temperature=0)
 
 query = ChatPromptTemplate.from_messages([
     ("system", "You are a helpful, professional assistant named 권봇. answer me in Korean no matter what"),
@@ -85,13 +85,23 @@ retriever2 = vectorstore2.as_retriever(search_type="similarity", search_kwargs={
 retriever_tool1 = create_retriever_tool(
     retriever1,
     name="saved_news_search",
-    description="엔비디아, 퍼플렉시티, 라마3 관련 정보를 검색한다. 엔비디아, 퍼플렉시티, 라마3 관련 정보는 이 도구를 사용해야 한다",
+    description="""
+아래와 같은 정보를 검색할 때에는 이 도구를 사용해야 한다
+- 엔비디아의 스타트업 인수
+- 퍼플렉시티 관련 내용 (회사가치, 투자 등)
+- 라마3 관련 내용
+""",
 )
 
 retriever_tool2 = create_retriever_tool(
     retriever2,
     name="pdf_search",
-    description="생성형 AI 신기술 도입에 따른 선거 규제 연구 관련 정보를 검색한다. 생성형 AI 신기술 도입에 따른 선거 규제 연구 관련 정보는 이 도구를 사용해야 한다",
+    description="""
+다음과 같은 정보를 검색할 때에는 이 도구를 사용해야 한다
+- 생성형 AI 신기술 도입에 따른 선거 규제 연구
+- 생성 AI 규제 연구
+- 생성 AI 연구
+"""
 )
 
 tools = [retriever_tool1, retriever_tool2]
