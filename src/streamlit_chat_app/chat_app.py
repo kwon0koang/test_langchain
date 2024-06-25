@@ -1,12 +1,7 @@
 import os
 import sys
 
-# 현재 파일 경로
-current_dir = os.path.dirname(os.path.abspath(__file__))
-# src 디렉토리 경로
-parent_dir = os.path.abspath(os.path.join(current_dir, os.pardir))
-# src 디렉토리를 sys.path에 추가
-sys.path.append(parent_dir)
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain.schema import ChatMessage
@@ -27,7 +22,7 @@ from langchain_core.pydantic_v1 import BaseModel, Field
 from constants import MY_NEWS_INDEX, MY_PDF_INDEX
 from embeddings import embeddings
 from callbacks import StreamCallback
-from tools import tools, TOOL_AUTO, SAVED_NEWS_SEARCH_TOOL_NAME, PDF_SEARCH_TOOL_NAME
+from tools import tools, TOOL_AUTO, SAVED_NEWS_SEARCH_TOOL_NAME, PDF_SEARCH_TOOL_NAME, WEB_SEARCH_TOOL_NAME
 
 st.title("권봇 🤖")
 
@@ -43,6 +38,7 @@ options = [
     (None, '선택 안함'),
     (SAVED_NEWS_SEARCH_TOOL_NAME, '저장된 뉴스 검색'),
     (PDF_SEARCH_TOOL_NAME, '저장된 PDF 검색'),
+    (WEB_SEARCH_TOOL_NAME, 'WEB 검색'),
     (TOOL_AUTO, '도구 자동 선택 (BETA)'),
 ]
 
@@ -131,10 +127,18 @@ def get_page_contents_with_metadata(docs) -> str:
     retrieved_docs = docs
     
     result = ""
+    
     for i, doc in enumerate(docs):
         if i > 0:
             result += "\n\n"
-        result += f"## 본문: {doc.page_content}\n### 출처: {doc.metadata['source']}"
+            
+        if 'url' in doc:
+            # Web 검색
+            result += f"## 본문: {doc['content']}\n### 출처: {doc['url']}"
+        else:
+            # Vector DB 검색
+            result += f"## 본문: {doc.page_content}\n### 출처: {doc.metadata['source']}"
+    
     return result
 
 
@@ -170,6 +174,8 @@ def get_new_messages_after_doc_retrieval(messages_dict) -> dict:
     global retrieved_docs
     retrieved_docs = retriever.invoke(last_human_message)
     
+    print(f"retrieved_docs: {retrieved_docs}")
+    
     new_human_message = HumanMessage(content=f"""
 <question>
 {last_human_message}
@@ -188,14 +194,21 @@ def get_new_messages_after_doc_retrieval(messages_dict) -> dict:
 # 출처 가져오기
 def get_metadata_sources(docs) -> str: 
     sources = set()
+    
     for doc in docs:
-        source = doc.metadata['source']
-        is_pdf = source.endswith('.pdf')
-        if (is_pdf):
-            file_path = doc.metadata['source']
-            file_name = os.path.basename(file_path)
-            source = f"[{file_name} ({int(doc.metadata['page']) + 1}페이지)](file://{file_path})"
-        sources.add(source)
+        if 'url' in doc:
+            # Web 검색
+            sources.add(doc['url'])
+        else:
+            # Vector DB 검색
+            source = doc.metadata['source']
+            is_pdf = source.endswith('.pdf')
+            if (is_pdf):
+                file_path = doc.metadata['source']
+                file_name = os.path.basename(file_path)
+                source = f"[{file_name} ({int(doc.metadata['page']) + 1}페이지)](file://{file_path})"
+            sources.add(source)
+        
     return "\n\n".join(sources)
 
 # AI 메시지 뒤에 출처 붙이기
