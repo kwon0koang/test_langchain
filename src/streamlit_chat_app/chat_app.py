@@ -21,6 +21,8 @@ from langchain.tools.retriever import create_retriever_tool
 from langchain_core.pydantic_v1 import BaseModel, Field
 from constants import MY_NEWS_INDEX, MY_PDF_INDEX
 from embeddings import embeddings
+from datetime import datetime
+from utils import current_date
 from callbacks import StreamCallback
 from tools import tools, TOOL_AUTO, SAVED_NEWS_SEARCH_TOOL_NAME, PDF_SEARCH_TOOL_NAME, WEB_SEARCH_TOOL_NAME
 
@@ -253,8 +255,11 @@ if query:
                             , callbacks=[StreamCallback(st.empty(), initial_text="")]
                             )
         prompt = ChatPromptTemplate.from_messages([
-            ("system", "You are a helpful, professional assistant named 권봇. answer me in Korean no matter what"),
-            MessagesPlaceholder(variable_name="messages"),
+            ("system", f"""You are a helpful, professional assistant named 권봇. 
+             Today's date is {current_date}.
+             Always provide the correct current date when asked.
+             Answer in Korean no matter what language the question is in.""")
+            , MessagesPlaceholder(variable_name="messages"),
         ])
         streaming_chain = prompt | streaming_eeve_llm
         
