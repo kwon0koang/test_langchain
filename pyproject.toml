@@ -27,6 +27,8 @@ streamlit = "^1.35.0"
 pymupdf4llm = "^0.0.5"
 langchain-experimental = "^0.0.60"
 langchain-huggingface = "^0.0.3"
+pydantic = "^2.7.4"
+unstructured = "<0.14.8"
 
 [build-system]
 requires = ["poetry-core"]
