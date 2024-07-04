@@ -52,4 +52,14 @@ retriever_tool3 = create_retriever_tool(
 """
 )
 
-tools = [retriever_tool1, retriever_tool2, retriever_tool3]
+# tools = [retriever_tool1, retriever_tool2, retriever_tool3]
+tools = [retriever_tool1, retriever_tool2]
+
+# 사이드바에 표시할 tool 목록 셋팅
+options_in_sidebar = [
+    (None, '선택 안함'),
+    (SAVED_NEWS_SEARCH_TOOL_NAME, '저장된 뉴스 검색'),
+    (PDF_SEARCH_TOOL_NAME, '저장된 PDF 검색'),
+    # (WEB_SEARCH_TOOL_NAME, 'WEB 검색'),
+    (TOOL_AUTO, '도구 자동 선택 (BETA)'),
+]

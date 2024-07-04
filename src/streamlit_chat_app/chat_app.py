@@ -2,6 +2,7 @@ import os
 import sys
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.dirname(os.path.abspath(os.path.dirname(__file__))))
 
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain.schema import ChatMessage
@@ -19,33 +20,24 @@ import time
 from langchain_core.runnables import RunnablePassthrough
 from langchain.tools.retriever import create_retriever_tool
 from langchain_core.pydantic_v1 import BaseModel, Field
-from constants import MY_NEWS_INDEX, MY_PDF_INDEX
-from embeddings import embeddings
+from typing import List, Union
+from langchain_community.tools import Tool
+from langchain_core.documents.base import Document
 from datetime import datetime
 from utils import current_date
 from callbacks import StreamCallback
-from tools import tools, TOOL_AUTO, SAVED_NEWS_SEARCH_TOOL_NAME, PDF_SEARCH_TOOL_NAME, WEB_SEARCH_TOOL_NAME
+from tools import tools, options_in_sidebar, TOOL_AUTO, SAVED_NEWS_SEARCH_TOOL_NAME, PDF_SEARCH_TOOL_NAME, WEB_SEARCH_TOOL_NAME
 
 st.title("권봇 🤖")
 
-eeve_llm = ChatOllama(model="EEVE-Korean-Instruct-10.8B-v1.0:latest", temperature=0)
-llama_llm = ChatOllama(model="llama3:8b", temperature=0)
-# qwen2_llm = ChatOllama(model="qwen2:latest", temperature=0)
+eeve = ChatOllama(model="EEVE-Korean-Instruct-10.8B-v1.0:latest", temperature=0)
+# llama = ChatOllama(model="llama3:8b", temperature=0)
+qwen2 = ChatOllama(model="qwen2:latest", temperature=0)
 
 # ==========================================================================================================================================================================================
 
-# 사이드바에 tool 목록 셋팅
-
-options = [
-    (None, '선택 안함'),
-    (SAVED_NEWS_SEARCH_TOOL_NAME, '저장된 뉴스 검색'),
-    (PDF_SEARCH_TOOL_NAME, '저장된 PDF 검색'),
-    (WEB_SEARCH_TOOL_NAME, 'WEB 검색'),
-    (TOOL_AUTO, '도구 자동 선택 (BETA)'),
-]
-
 # 옵션명 추출
-option_names, option_display_names = zip(*options)
+option_names, option_display_names = zip(*options_in_sidebar)
 
 if 'selected_option_name' not in st.session_state:
     st.session_state.selected_option_name = None
@@ -53,7 +45,7 @@ if 'selected_option_name' not in st.session_state:
 # 선택된 옵션 업데이트 함수
 def update_selected_option():
     selected_option_display_name = st.session_state.selected_option_display_name
-    st.session_state.selected_option_name = next(name for name, display_name in options if display_name == selected_option_display_name)
+    st.session_state.selected_option_name = next(name for name, display_name in options_in_sidebar if display_name == selected_option_display_name)
 
 # 사이드바에 selectbox 생성
 selected_option_display_name = st.sidebar.selectbox(
@@ -66,50 +58,108 @@ selected_option_display_name = st.sidebar.selectbox(
 # ==========================================================================================================================================================================================
 
 # 적합한 tool 추출 위한 프롬프트
-prompt_for_select_tool = ChatPromptTemplate.from_messages([
+prompt_for_select_actions = ChatPromptTemplate.from_messages([
     ("system", """
-You have "tools" that can answer "question".
-Using "tools" as a guide, choose a "tool" that can answer "question".
-Without saying anything else, say the "tool_name" of the selected "tool" in English.
-If there is no appropriate "tool", say "None".
+당신은 인간의 질문에 답변하기 위해 적절한 도구를 선택하는 AI 어시스턴트입니다. 
 
-<tools>
+다음 도구들을 사용할 수 있습니다:
 {tools}
-</tools>
 
-<question>
-{question}
-</question>
+인간의 질문을 주의 깊게 분석하고, 가장 적절한 도구를 선택하여 답변하세요. 질문에 따라 여러 도구를 사용해야 할 수도 있습니다.
 
-# answer :
+응답 시 다음 JSON 형식을 엄격히 따라주세요:
+```json
+[
+  {{
+    "action": string, // 선택한 도구의 이름 (tool_name)
+    "action_input": string // 도구에 입력할 검색어 또는 질문
+  }},
+  {{
+    // 다음 액션 정보
+  }}
+]
+```
+
+응답 지침:
+1. 항상 JSON 배열로 응답하세요, 단일 도구를 사용하는 경우에도 마찬가지입니다.
+2. 하나의 도구만 필요한 경우, 배열에 하나의 객체만 포함시키세요.
+3. 여러 도구가 필요한 경우, 각 도구에 대해 별도의 객체를 배열에 추가하세요.
+4. 액션의 순서가 중요한 경우, 배열 내 객체의 순서로 표현하세요.
+5. 이 JSON 형식으로만 응답하고, 다른 설명이나 추가 텍스트는 포함하지 마세요.
+6. 인간의 질문에 직접 답변하지 말고, 적절한 도구를 선택하여 JSON 형식으로만 응답하세요.
+
+question: {question}
+
+answer: 
 """
     )
 ])
 
-# tool 목록 가져오기
 def get_tools(query):
+    """
+    사용 가능한 도구들의 이름과 설명을 JSON 형식으로 반환
+    """
+    # tools 리스트에서 각 도구의 이름, 설명을 딕셔너리 형태로 추출
     tool_info = [{"tool_name": tool.name, "tool_description": tool.description} for tool in tools]
-    print(f"get_tools / {tool_info}")
+    
+    print(f"get_tools / tool_info: {tool_info}")
+    
+    # tool_info 리스트를 JSON 형식으로 변환하여 반환
     return json.dumps(tool_info, ensure_ascii=False)
 
-# tool명으로 retriever 찾기
-def get_retriever_by_tool_name(name) -> VectorStoreRetriever:
-    print(f"get_retriever_by_tool_name / name: {name}")
+chain_for_select_actions = (
+    {"tools": get_tools, "question": RunnablePassthrough()}
+    | prompt_for_select_actions 
+    | qwen2
+    | StrOutputParser()
+    )
+
+# ==========================================================================================================================================================================================
+
+# 도구 이름으로 검색기를 가져오는 함수
+def get_retriever_by_tool_name(name: str) -> VectorStoreRetriever:
     for tool in tools:
         if tool.name == name:
-            # print(tool.func) # functools.partial(<function _get_relevant_documents at 0x1487dd6c0>, retriever=VectorStoreRetriever(tags=['FAISS', 'HuggingFaceEmbeddings'], vectorstore=<langchain_community.vectorstores.faiss.FAISS object at 0x317e52ea0>, search_kwargs={'k': 5}), document_prompt=PromptTemplate(input_variables=['page_content'], template='{page_content}'), document_separator='\n\n')
             return tool.func.keywords['retriever']
     return None
 
-# 적합한 tool 추출 위한 체인
-chain_for_select_tool = (
-    {"tools": get_tools, "question": RunnablePassthrough()}
-    | prompt_for_select_tool 
-    # | llm
-    | llama_llm
-    # | qwen2_llm
-    | StrOutputParser()
-    )
+def get_documents_from_actions(actions_json: str, tools: List[Tool]) -> List[Document]:
+    """
+    주어진 JSON 문자열을 파싱하여 해당 액션에 대응하는 검색기를 찾아서 
+    액션을 실행 후 검색된 문서를 반환
+    
+    :param actions_json: 액션과 그 입력이 포함된 JSON 문자열
+    :param tools: 사용 가능한 도구들의 리스트
+    :return: 액션을 통해 검색된 문서들의 리스트
+    """
+    # JSON 문자열을 파싱
+    try:
+        actions = json.loads(actions_json)
+    except json.JSONDecodeError:
+        raise ValueError("유효하지 않은 JSON 문자열")
+
+    # 파싱된 객체가 리스트인지 확인
+    if not isinstance(actions, list):
+        raise ValueError("제공된 JSON은 액션 리스트를 나타내야 함")
+
+    documents = []
+
+    # 각 액션을 처리
+    for action in actions:
+        if not isinstance(action, dict) or 'action' not in action or 'action_input' not in action:
+            continue  # 유효하지 않은 액션은 건너뜀
+
+        tool_name = action['action']
+        action_input = action['action_input']
+        print(f"get_documents_from_actions / tool_name: {tool_name} / action_input: {action_input}")
+        retriever = get_retriever_by_tool_name(tool_name)
+        
+        if retriever:
+            # 액션 입력으로 검색기 실행
+            retrieved_docs = retriever.invoke(action_input)
+            documents.extend(retrieved_docs)
+
+    return documents
 
 # ==========================================================================================================================================================================================
 
@@ -125,6 +175,9 @@ context를 사용해서 question에 대한 답을 말해줘.
 
 retrieved_docs = []
 def get_page_contents_with_metadata(docs) -> str: 
+    """
+    문서 리스트를 받아 각 문서의 본문 내용과 출처를 포함한 문자열을 생성
+    """
     global retrieved_docs
     retrieved_docs = docs
     
@@ -143,7 +196,6 @@ def get_page_contents_with_metadata(docs) -> str:
     
     return result
 
-
 # 문서 검색 후 새 메시지 리스트 가져오기
 def get_new_messages_after_doc_retrieval(messages_dict) -> dict:
     print("========================")
@@ -153,29 +205,43 @@ def get_new_messages_after_doc_retrieval(messages_dict) -> dict:
     last_human_message = messages[-1].content
     print(f"last_human_message: {last_human_message}")
     
-    selected_tool = ""
-    if TOOL_AUTO == st.session_state.selected_option_name:
-        selected_tool = chain_for_select_tool.invoke(last_human_message) # LLM 한테 tool 선택하게 하기
-        print(f"chain_for_select_tool.invoke 결과 / selected_tool: {selected_tool}")
-        # 후보정 Start ============================
-        # 가끔 "웹 검색(saved_news_search)" 요런 형식으로 말함 ㅜ
-        if PDF_SEARCH_TOOL_NAME in selected_tool:
-            selected_tool = PDF_SEARCH_TOOL_NAME
-        elif SAVED_NEWS_SEARCH_TOOL_NAME in selected_tool:
-            selected_tool = SAVED_NEWS_SEARCH_TOOL_NAME
-        else:
-            selected_tool = ""
-        # 후보정 End ============================
-    else:
-        selected_tool = st.session_state.selected_option_name
-    retriever = get_retriever_by_tool_name(selected_tool)
     
-    if retriever is None:
-        raise ValueError(f"{selected_tool} retriever가 없어요")
+    # selected_tool = ""
+    # if TOOL_AUTO == st.session_state.selected_option_name:
+    #     selected_tool = chain_for_select_tool.invoke(last_human_message) # LLM 한테 tool 선택하게 하기
+    #     print(f"chain_for_select_tool.invoke 결과 / selected_tool: {selected_tool}")
+    #     # 후보정 Start ============================
+    #     # 가끔 "웹 검색(saved_news_search)" 요런 형식으로 말함 ㅜ
+    #     if PDF_SEARCH_TOOL_NAME in selected_tool:
+    #         selected_tool = PDF_SEARCH_TOOL_NAME
+    #     elif SAVED_NEWS_SEARCH_TOOL_NAME in selected_tool:
+    #         selected_tool = SAVED_NEWS_SEARCH_TOOL_NAME
+    #     else:
+    #         selected_tool = ""
+    #     # 후보정 End ============================
+    # else:
+    #     selected_tool = st.session_state.selected_option_name
+    # retriever = get_retriever_by_tool_name(selected_tool)
+    
+    # if retriever is None:
+    #     raise ValueError(f"{selected_tool} retriever가 없어요")
+    
+    # global retrieved_docs
+    # retrieved_docs = retriever.invoke(last_human_message)
+    
     
     global retrieved_docs
-    retrieved_docs = retriever.invoke(last_human_message)
     
+    
+    selected_tool = ""
+    if TOOL_AUTO == st.session_state.selected_option_name:
+        actions_json = chain_for_select_actions.invoke(query)
+        retrieved_docs = get_documents_from_actions(actions_json, tools)
+    else:
+        selected_tool = st.session_state.selected_option_name
+        retriever = get_retriever_by_tool_name(selected_tool)
+        retrieved_docs = retriever.invoke(last_human_message)
+            
     print(f"retrieved_docs: {retrieved_docs}")
     
     new_human_message = HumanMessage(content=f"""
@@ -221,7 +287,7 @@ def parse(ai_message: AIMessage) -> str:
 agent_chain = (
     get_new_messages_after_doc_retrieval
     | agent_prompt
-    | eeve_llm
+    | eeve
     | parse
 )
 
