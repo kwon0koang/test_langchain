@@ -24,7 +24,7 @@ retriever_tool1 = create_retriever_tool(
     retriever1,
     name=SAVED_NEWS_SEARCH_TOOL_NAME,
     description="""
-아래와 같은 정보를 검색할 때에는 이 도구를 사용해야 한다
+다음과 같은 정보를 검색할 때에는 이 도구를 사용해야 한다:
 - 엔비디아의 스타트업 인수 관련 내용
 - 퍼플렉시티 관련 내용 (회사가치, 투자 등)
 - 라마3 관련 내용
@@ -35,7 +35,7 @@ retriever_tool2 = create_retriever_tool(
     retriever2,
     name=PDF_SEARCH_TOOL_NAME,
     description="""
-다음과 같은 정보를 검색할 때에는 이 도구를 사용해야 한다
+다음과 같은 정보를 검색할 때에는 이 도구를 사용해야 한다:
 - 생성형 AI 신기술 도입에 따른 선거 규제 연구 관련 내용
 - 생성 AI 규제 연구 관련 내용
 - 생성 AI 연구 관련 내용
