@@ -8,6 +8,7 @@ from langchain.callbacks.base import BaseCallbackHandler
 from langchain.schema import ChatMessage
 from langchain_openai import ChatOpenAI
 import json
+from langchain import hub
 from langchain_community.chat_models import ChatOllama
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from langchain_community.vectorstores import FAISS
@@ -58,42 +59,7 @@ selected_option_display_name = st.sidebar.selectbox(
 # ==========================================================================================================================================================================================
 
 # 적합한 tool 추출 위한 프롬프트
-prompt_for_select_actions = ChatPromptTemplate.from_messages([
-    ("system", """
-당신은 인간의 질문에 답변하기 위해 적절한 도구를 선택하는 AI 어시스턴트입니다. 
-
-다음 도구들을 사용할 수 있습니다:
-{tools}
-
-인간의 질문을 주의 깊게 분석하고, 가장 적절한 도구를 선택하여 답변하세요. 질문에 따라 여러 도구를 사용해야 할 수도 있습니다.
-
-응답 시 다음 JSON 형식을 엄격히 따라주세요:
-```json
-[
-  {{
-    "action": string, // 선택한 도구의 이름 (tool_name)
-    "action_input": string // 도구에 입력할 검색어 또는 질문
-  }},
-  {{
-    // 다음 액션 정보
-  }}
-]
-```
-
-응답 지침:
-1. 항상 JSON 배열로 응답하세요, 단일 도구를 사용하는 경우에도 마찬가지입니다.
-2. 하나의 도구만 필요한 경우, 배열에 하나의 객체만 포함시키세요.
-3. 여러 도구가 필요한 경우, 각 도구에 대해 별도의 객체를 배열에 추가하세요.
-4. 액션의 순서가 중요한 경우, 배열 내 객체의 순서로 표현하세요.
-5. 이 JSON 형식으로만 응답하고, 다른 설명이나 추가 텍스트는 포함하지 마세요.
-6. 인간의 질문에 직접 답변하지 말고, 적절한 도구를 선택하여 JSON 형식으로만 응답하세요.
-
-question: {question}
-
-answer: 
-"""
-    )
-])
+prompt_for_extract_actions = hub.pull("kwonempty/extract-actions-for-ollama")
 
 def get_tools(query):
     """
@@ -107,9 +73,9 @@ def get_tools(query):
     # tool_info 리스트를 JSON 형식으로 변환하여 반환
     return json.dumps(tool_info, ensure_ascii=False)
 
-chain_for_select_actions = (
+chain_for_extract_actions = (
     {"tools": get_tools, "question": RunnablePassthrough()}
-    | prompt_for_select_actions 
+    | prompt_for_extract_actions 
     | qwen2
     | StrOutputParser()
     )
@@ -205,37 +171,11 @@ def get_new_messages_after_doc_retrieval(messages_dict) -> dict:
     last_human_message = messages[-1].content
     print(f"last_human_message: {last_human_message}")
     
-    
-    # selected_tool = ""
-    # if TOOL_AUTO == st.session_state.selected_option_name:
-    #     selected_tool = chain_for_select_tool.invoke(last_human_message) # LLM 한테 tool 선택하게 하기
-    #     print(f"chain_for_select_tool.invoke 결과 / selected_tool: {selected_tool}")
-    #     # 후보정 Start ============================
-    #     # 가끔 "웹 검색(saved_news_search)" 요런 형식으로 말함 ㅜ
-    #     if PDF_SEARCH_TOOL_NAME in selected_tool:
-    #         selected_tool = PDF_SEARCH_TOOL_NAME
-    #     elif SAVED_NEWS_SEARCH_TOOL_NAME in selected_tool:
-    #         selected_tool = SAVED_NEWS_SEARCH_TOOL_NAME
-    #     else:
-    #         selected_tool = ""
-    #     # 후보정 End ============================
-    # else:
-    #     selected_tool = st.session_state.selected_option_name
-    # retriever = get_retriever_by_tool_name(selected_tool)
-    
-    # if retriever is None:
-    #     raise ValueError(f"{selected_tool} retriever가 없어요")
-    
-    # global retrieved_docs
-    # retrieved_docs = retriever.invoke(last_human_message)
-    
-    
     global retrieved_docs
-    
     
     selected_tool = ""
     if TOOL_AUTO == st.session_state.selected_option_name:
-        actions_json = chain_for_select_actions.invoke(query)
+        actions_json = chain_for_extract_actions.invoke(query)
         retrieved_docs = get_documents_from_actions(actions_json, tools)
     else:
         selected_tool = st.session_state.selected_option_name
