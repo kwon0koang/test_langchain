@@ -82,13 +82,15 @@ chain_for_extract_actions = (
 
 # ==========================================================================================================================================================================================
 
-# 도구 이름으로 검색기를 가져오는 함수
 def get_retriever_by_tool_name(name: str) -> VectorStoreRetriever:
+    """
+    도구 이름을 통해 검색기 반환
+    """
     for tool in tools:
         if tool.name == name:
             return tool.func.keywords['retriever']
     return None
-
+    
 def get_documents_from_actions(actions_json: str, tools: List[Tool]) -> List[Document]:
     """
     주어진 JSON 문자열을 파싱하여 해당 액션에 대응하는 검색기를 찾아서 
@@ -98,6 +100,8 @@ def get_documents_from_actions(actions_json: str, tools: List[Tool]) -> List[Doc
     :param tools: 사용 가능한 도구들의 리스트
     :return: 액션을 통해 검색된 문서들의 리스트
     """
+    print(f"get_documents_from_actions / actions_json: {actions_json}")
+    
     # JSON 문자열을 파싱
     try:
         actions = json.loads(actions_json)
@@ -118,14 +122,21 @@ def get_documents_from_actions(actions_json: str, tools: List[Tool]) -> List[Doc
         tool_name = action['action']
         action_input = action['action_input']
         print(f"get_documents_from_actions / tool_name: {tool_name} / action_input: {action_input}")
+        
+        if tool_name == "None": # 사용할 도구 없음. 바로 빈 document 리턴
+            print(f"get_documents_from_actions / 사용할 도구 없음. 바로 빈 document 리턴")
+            return []
+        
         retriever = get_retriever_by_tool_name(tool_name)
         
         if retriever:
             # 액션 입력으로 검색기 실행
             retrieved_docs = retriever.invoke(action_input)
             documents.extend(retrieved_docs)
-
+        
+    print(f"get_documents_from_actions / len(documents): {len(documents)}")
     return documents
+
 
 # ==========================================================================================================================================================================================
 
@@ -261,10 +272,12 @@ if query:
                             , callbacks=[StreamCallback(st.empty(), initial_text="")]
                             )
         prompt = ChatPromptTemplate.from_messages([
-            ("system", f"""You are a helpful, professional assistant named 권봇. 
-             Today's date is {current_date}.
-             Always provide the correct current date when asked.
-             Answer in Korean no matter what language the question is in.""")
+            ("system", f"""
+너는 정확하고 신뢰할 수 있는 답변을 제공하는 유능한 업무 보조자야.
+오늘 날짜는 {current_date}야. 무엇을 요청받았을 때 항상 정확한 현재 날짜를 제공해줘.
+항상 한국어로 대답해줘.
+다음 질문에 최선을 다해서 대답해줘.
+""")
             , MessagesPlaceholder(variable_name="messages"),
         ])
         streaming_chain = prompt | streaming_eeve_llm
