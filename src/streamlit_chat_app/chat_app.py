@@ -244,6 +244,12 @@ def get_retrieved_docs_string(messages: List[BaseMessage], selected_option_name:
         retrieved_docs = retriever.invoke(query)
     
     messages_without_last = messages[:-1]
+    
+    if len(retrieved_docs) <= 0:
+        return {"messages": messages_without_last
+            , "context": ""
+            , "question": query}
+    
     return {"messages": messages_without_last
             , "context": get_page_contents_with_metadata(retrieved_docs)
             , "question": query}
@@ -276,14 +282,6 @@ def parse(ai_message: AIMessage) -> str:
     """
     return f"{ai_message.content}\n\n[출처]\n\n{get_metadata_sources(retrieved_docs)}"
 
-# agent_chain = (
-#     get_new_messages_after_doc_retrieval
-#     | agent_prompt
-#     | eeve
-#     | parse
-# )
-
-# {"messages": messages_without_last, "user_input": new_human_message}
 with_context_chain = (
     RunnablePassthrough()
     | RunnableLambda(lambda x: {

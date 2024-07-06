@@ -1,0 +1,28 @@
+@startuml uml_agent_local_llm_custom
+start
+
+:질문;
+
+#Yellow:액션 추출 (Qwen2);
+
+:액션에 맞는 도구 사용 (검색);
+
+if (검색된 문서가 있는지?) then (yes)
+  :검색된 문서 전처리
+  (내용과 출처만 파싱);
+  
+  partition "**컨텍스트 포함 체인 사용**" {
+      :컨텍스트 포함 프롬프트;
+      #PaleGreen:답변 생성 (EEVE);
+      :후처리
+      (출처 명시);
+  }
+else (no)
+  partition "**컨텍스트 미포함 체인 사용**" {
+      :컨텍스트 미포함 프롬프트;
+      #PaleGreen:답변 생성 (EEVE);
+  }
+endif
+
+stop
+@enduml
