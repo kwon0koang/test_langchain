@@ -1,8 +1,12 @@
 import os
 import sys
 
+# 현재 디렉토리를 sys.path에 추가
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# 상위 디렉토리를 sys.path에 추가
 sys.path.append(os.path.dirname(os.path.abspath(os.path.dirname(__file__))))
+# 상위의 상위 디렉토리를 sys.path에 추가
+# sys.path.append(os.path.dirname(os.path.abspath(os.path.dirname(os.path.dirname(__file__)))))
 
 from langchain.callbacks.base import BaseCallbackHandler
 from langchain.schema import ChatMessage
@@ -10,7 +14,7 @@ from langchain_openai import ChatOpenAI
 import json
 from langchain import hub
 from langchain_community.chat_models import ChatOllama
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage
 from langchain_community.vectorstores import FAISS
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.output_parsers import StrOutputParser
@@ -18,7 +22,7 @@ import streamlit as st
 from streamlit.runtime.state import SessionStateProxy
 from langchain_core.vectorstores import VectorStoreRetriever
 import time
-from langchain_core.runnables import RunnablePassthrough
+from langchain_core.runnables import RunnablePassthrough, RunnableLambda, RunnableBranch
 from langchain.tools.retriever import create_retriever_tool
 from langchain_core.pydantic_v1 import BaseModel, Field
 from typing import List, Union
@@ -28,6 +32,13 @@ from datetime import datetime
 from utils import current_date
 from callbacks import StreamCallback
 from tools import tools, options_in_sidebar, TOOL_AUTO, SAVED_NEWS_SEARCH_TOOL_NAME, PDF_SEARCH_TOOL_NAME, WEB_SEARCH_TOOL_NAME
+
+st.set_page_config(
+    page_title="권봇", # 페이지 제목
+    page_icon=":robot_face:", # 페이지 아이콘
+    layout="centered",
+    initial_sidebar_state="auto"
+)
 
 st.title("권봇 🤖")
 
@@ -43,10 +54,17 @@ option_names, option_display_names = zip(*options_in_sidebar)
 if 'selected_option_name' not in st.session_state:
     st.session_state.selected_option_name = None
 
+if 'test_count' not in st.session_state:
+    st.session_state.test_count = 12345
+
 # 선택된 옵션 업데이트 함수
 def update_selected_option():
     selected_option_display_name = st.session_state.selected_option_display_name
-    st.session_state.selected_option_name = next(name for name, display_name in options_in_sidebar if display_name == selected_option_display_name)
+    for name, display_name in options_in_sidebar:
+        if display_name == selected_option_display_name:
+            st.session_state['selected_option_name'] = name
+            break
+    print(f"update_selected_option / selected_option_display_name: {selected_option_display_name} / selected_option_name: {st.session_state['selected_option_name']}")
 
 # 사이드바에 selectbox 생성
 selected_option_display_name = st.sidebar.selectbox(
@@ -142,12 +160,37 @@ def get_documents_from_actions(actions_json: str, tools: List[Tool]) -> List[Doc
 
 agent_prompt = ChatPromptTemplate.from_messages([
     ("system", """
-너는 유능한 업무 보조자야.
-context를 사용해서 question에 대한 답을 말해줘.
-정답을 모르면 모른다고만 해.
+너는 정확하고 신뢰할 수 있는 답변을 제공하는 유능한 업무 보조자야.
+아래의 context를 사용해서 question에 대한 답변을 작성해줘.
+
+다음 지침을 따라주세요:
+1. 답변은 반드시 한국어로 작성해야 해.
+2. context에 있는 정보만을 사용해서 답변해야 해.
+3. 정답을 확실히 알 수 없다면 "주어진 정보로는 답변하기 어렵습니다."라고만 말해.
+4. 답변 시 추측하거나 개인적인 의견을 추가하지 마.
+5. 가능한 간결하고 명확하게 답변해.
 """)
     , MessagesPlaceholder(variable_name="messages"),
-    ("human", "{user_input}")
+    ("human", """
+     
+# question: 
+{question}
+
+# context: 
+{context}
+
+# answer: 
+""")
+])
+
+default_prompt = ChatPromptTemplate.from_messages([
+    ("system", """
+너는 정확하고 신뢰할 수 있는 답변을 제공하는 유능한 업무 보조자야.
+다음 질문에 최선을 다해서 대답해줘.
+"""
+    )
+    , MessagesPlaceholder(variable_name="messages")
+    , ("human", "{question}")
 ])
 
 retrieved_docs = []
@@ -173,45 +216,42 @@ def get_page_contents_with_metadata(docs) -> str:
     
     return result
 
-# 문서 검색 후 새 메시지 리스트 가져오기
-def get_new_messages_after_doc_retrieval(messages_dict) -> dict:
+def check_context(inputs: dict) -> bool:
+    """
+    context 존재 여부 확인
+    
+    :return: 문자열이 비어있지 않으면 True, 비어있으면 False
+    """
+    result = bool(inputs['context'].strip())
+    print(f"check_context / result: {result}")
+    return result
+
+def get_retrieved_docs_string(messages: List[BaseMessage], selected_option_name: str) -> dict:
+    """
+    쿼리에 따라 문서를 검색하고, 해당 문서들의 본문 내용과 출처를 포함한 문자열을 반환
+    """
     print("========================")
-    print(f"messages_dict: {messages_dict}") # {'messages': [HumanMessage(content='라마3 성능은?')]}
-    messages = messages_dict["messages"]
-    print(f"messages: {messages}")
-    last_human_message = messages[-1].content
-    print(f"last_human_message: {last_human_message}")
+    print(f"get_retrieved_docs_string / messages: {messages}")
+    query = messages[-1].content # last human message
+    print(f"get_retrieved_docs_string / query: {query}")
     
     global retrieved_docs
-    
-    selected_tool = ""
-    if TOOL_AUTO == st.session_state.selected_option_name:
+    if TOOL_AUTO == selected_option_name:
         actions_json = chain_for_extract_actions.invoke(query)
         retrieved_docs = get_documents_from_actions(actions_json, tools)
     else:
-        selected_tool = st.session_state.selected_option_name
-        retriever = get_retriever_by_tool_name(selected_tool)
-        retrieved_docs = retriever.invoke(last_human_message)
-            
-    print(f"retrieved_docs: {retrieved_docs}")
-    
-    new_human_message = HumanMessage(content=f"""
-<question>
-{last_human_message}
-</question>
-
-<context>
-{get_page_contents_with_metadata(retrieved_docs)}
-</context>
-
-# answer :
-""")
+        retriever = get_retriever_by_tool_name(selected_option_name)
+        retrieved_docs = retriever.invoke(query)
     
     messages_without_last = messages[:-1]
-    return {"messages": messages_without_last, "user_input": new_human_message}
+    return {"messages": messages_without_last
+            , "context": get_page_contents_with_metadata(retrieved_docs)
+            , "question": query}
 
-# 출처 가져오기
 def get_metadata_sources(docs) -> str: 
+    """
+    문서 리스트에서 각 문서의 출처 추출해서 문자열로 반환
+    """
     sources = set()
     
     for doc in docs:
@@ -230,16 +270,50 @@ def get_metadata_sources(docs) -> str:
         
     return "\n\n".join(sources)
 
-# AI 메시지 뒤에 출처 붙이기
 def parse(ai_message: AIMessage) -> str:
-    """Parse the AI message and add source."""
+    """
+    AI 메시지 파싱해서 내용에 출처 추가
+    """
     return f"{ai_message.content}\n\n[출처]\n\n{get_metadata_sources(retrieved_docs)}"
 
-agent_chain = (
-    get_new_messages_after_doc_retrieval
+# agent_chain = (
+#     get_new_messages_after_doc_retrieval
+#     | agent_prompt
+#     | eeve
+#     | parse
+# )
+
+# {"messages": messages_without_last, "user_input": new_human_message}
+with_context_chain = (
+    RunnablePassthrough()
+    | RunnableLambda(lambda x: {
+        "messages": x["messages"]
+        , "context": x["context"]
+        , "question": x["question"]
+        })
     | agent_prompt
     | eeve
     | parse
+)
+
+without_context_chain = (
+    RunnablePassthrough()
+    | RunnableLambda(lambda x: {
+        "messages": x["messages"]
+        ,"question": x["question"]
+        })
+    | default_prompt
+    | eeve
+    | StrOutputParser()
+)
+
+agent_chain = (
+    RunnablePassthrough()
+    | RunnableLambda(lambda x: get_retrieved_docs_string(x["messages"], st.session_state.selected_option_name))
+    | RunnableBranch(
+        (lambda x: check_context(x), with_context_chain),
+        without_context_chain  # default
+    )
 )
 
 # ==========================================================================================================================================================================================
@@ -295,8 +369,8 @@ if query:
                     st.session_state.messages.append(AIMessage(type="ai", content=response))
             except Exception as e:
                 print(f"error: {e}")
-                st.write("적절한 검색 도구를 찾지 못했어요, 아는 만큼 답변할게요 🫠")
-                # 도구 찾기에 실패했기 때문에 LLM한테 그냥 물어보기
+                st.write("검색 실패했어요, 아는 만큼 답변할게요 🫠")
+                # 검색 실패했기 때문에 LLM한테 그냥 물어보기
                 with st.spinner(""):
                     # response = chain.invoke({"messages": st.session_state.messages}, {"callbacks": [stream_handler]})
                     response = streaming_chain.invoke({"messages": st.session_state.messages})
