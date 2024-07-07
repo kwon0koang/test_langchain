@@ -3,9 +3,13 @@ start
 
 :질문;
 
-#Yellow:액션 추출 (Qwen2);
+if (도구 자동 선택인지?) then (Yes)
+  #Yellow:액션 추출 (Qwen2);
 
-:액션에 맞는 도구 사용 (검색);
+  :액션에 맞는 도구 사용 (검색);
+else (No)
+  :도구 사용 (검색);
+endif
 
 if (검색된 문서가 있는지?) then (Yes)
   :검색된 문서 전처리
