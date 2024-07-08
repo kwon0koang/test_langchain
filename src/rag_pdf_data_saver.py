@@ -37,7 +37,6 @@ print(f'splits : {splits}')
 
 vectorstore = FAISS.from_documents(splits,
                                    embedding = embeddings,
-                                   distance_strategy = DistanceStrategy.COSINE # 코사인 유사도 측정. 값이 클수록 더 유사함을 의미
                                   )
 
 # 로컬에 DB 저장
