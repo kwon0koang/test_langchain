@@ -6,7 +6,7 @@ authors = ["kwon0koang <kwon0koang@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = ">=3.11,<4.0"
 langchain = "^0.2.3"
 langserve = "^0.0.51"
 fastapi = "^0.110.1"
@@ -39,6 +39,9 @@ tabula-py = "^2.9.3"
 camelot-py = "^0.11.0"
 opencv-python = "^4.10.0.84"
 ghostscript = "^0.7"
+
+#
+langchain-upstage = "^0.1.7"
 
 [build-system]
 requires = ["poetry-core"]

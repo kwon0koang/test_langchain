@@ -29,7 +29,7 @@ from typing import List, Union
 from langchain_community.tools import Tool
 from langchain_core.documents.base import Document
 from datetime import datetime
-from utils import current_date
+from utils import current_date, perform_groundedness_check, grounded_result_mapping
 from callbacks import StreamCallback
 from tools import tools, options_in_sidebar, TOOL_AUTO, SAVED_NEWS_SEARCH_TOOL_NAME, PDF_SEARCH_TOOL_NAME, WEB_SEARCH_TOOL_NAME
 
@@ -193,26 +193,35 @@ default_prompt = ChatPromptTemplate.from_messages([
     , ("human", "{question}")
 ])
 
-retrieved_docs = []
+if 'retrieved_docs' not in st.session_state:
+    st.session_state.retrieved_docs = []
+    
 def get_page_contents_with_metadata(docs) -> str: 
     """
     문서 리스트를 받아 각 문서의 본문 내용과 출처를 포함한 문자열을 생성
     """
-    global retrieved_docs
-    retrieved_docs = docs
+    st.session_state.retrieved_docs = docs
     
     result = ""
     
     for i, doc in enumerate(docs):
         if i > 0:
-            result += "\n\n"
+            result += "\n"
             
+        # if 'url' in doc:
+        #     # Web 검색
+        #     result += f"## 본문: {doc['content']}\n### 출처: {doc['url']}"
+        # else:
+        #     # Vector DB 검색
+        #     result += f"## 본문: {doc.page_content}\n### 출처: {doc.metadata['source']}"
+        
+        # LLM 답변 이후에 parse 함수로 출처 붙여줄거니까 본문만 이어붙인 문자열 생성하자
         if 'url' in doc:
             # Web 검색
-            result += f"## 본문: {doc['content']}\n### 출처: {doc['url']}"
+            result += f"{doc['content']}"
         else:
             # Vector DB 검색
-            result += f"## 본문: {doc.page_content}\n### 출처: {doc.metadata['source']}"
+            result += f"{doc.page_content}"
     
     return result
 
@@ -226,32 +235,31 @@ def check_context(inputs: dict) -> bool:
     print(f"check_context / result: {result}")
     return result
 
-def get_retrieved_docs_string(messages: List[BaseMessage], selected_option_name: str) -> dict:
+def retrieved_docs_and_get_messages(messages: List[BaseMessage], selected_option_name: str) -> dict:
     """
     쿼리에 따라 문서를 검색하고, 해당 문서들의 본문 내용과 출처를 포함한 문자열을 반환
     """
     print("========================")
-    print(f"get_retrieved_docs_string / messages: {messages}")
+    print(f"retrieved_docs_and_get_messages / messages: {messages}")
     query = messages[-1].content # last human message
-    print(f"get_retrieved_docs_string / query: {query}")
+    print(f"retrieved_docs_and_get_messages / query: {query}")
     
-    global retrieved_docs
     if TOOL_AUTO == selected_option_name:
         actions_json = chain_for_extract_actions.invoke(query)
-        retrieved_docs = get_documents_from_actions(actions_json, tools)
+        st.session_state.retrieved_docs = get_documents_from_actions(actions_json, tools)
     else:
         retriever = get_retriever_by_tool_name(selected_option_name)
-        retrieved_docs = retriever.invoke(query)
+        st.session_state.retrieved_docs = retriever.invoke(query)
     
     messages_without_last = messages[:-1]
     
-    if len(retrieved_docs) <= 0:
+    if len(st.session_state.retrieved_docs) <= 0:
         return {"messages": messages_without_last
             , "context": ""
             , "question": query}
     
     return {"messages": messages_without_last
-            , "context": get_page_contents_with_metadata(retrieved_docs)
+            , "context": get_page_contents_with_metadata(st.session_state.retrieved_docs)
             , "question": query}
 
 def get_metadata_sources(docs) -> str: 
@@ -280,7 +288,7 @@ def parse(ai_message: AIMessage) -> str:
     """
     AI 메시지 파싱해서 내용에 출처 추가
     """
-    return f"{ai_message.content}\n\n[출처]\n\n{get_metadata_sources(retrieved_docs)}"
+    return f"{ai_message.content}\n\n<span style='color:gray;'>[출처]</span>\n\n{get_metadata_sources(st.session_state.retrieved_docs)}"
 
 with_context_chain = (
     RunnablePassthrough()
@@ -307,7 +315,7 @@ without_context_chain = (
 
 agent_chain = (
     RunnablePassthrough()
-    | RunnableLambda(lambda x: get_retrieved_docs_string(x["messages"], st.session_state.selected_option_name))
+    | RunnableLambda(lambda x: retrieved_docs_and_get_messages(x["messages"], st.session_state.selected_option_name))
     | RunnableBranch(
         (lambda x: check_context(x), with_context_chain),
         without_context_chain  # default
@@ -327,14 +335,18 @@ if len(st.session_state.messages) >= MAX_MESSAGES_COUNT:
 
 for msg in st.session_state.messages:
     print(f"for msg in st.session_state.messages / msg.content: {msg.content}")
-    st.chat_message(msg.type).write(msg.content)
+    st.chat_message(msg.type).markdown(msg.content
+                                       , unsafe_allow_html=True
+                                       )
 
 query = st.chat_input()
 if query:
     st.write("") # agent_chain 검색 중 메시지 띄울 때, 이전 메시지가 잠깐 보이는 오류가 있어서, 빈 글 하나 썼더니 오류 해결됨
     
     st.session_state.messages.append(HumanMessage(type="human", content=query))
-    st.chat_message("human").write(query)
+    st.chat_message("human").markdown(query
+                                      , unsafe_allow_html=True
+                                      )
 
     with st.chat_message("ai"):
         print(f"messages: {st.session_state.messages}")
@@ -362,9 +374,21 @@ if query:
                 with st.spinner("검색 중이에요 🔍"):
                     response = agent_chain.invoke({"messages": st.session_state.messages})
                     print(f"agent_chain.invoke / response: {response}")
-                    st.markdown(response)
+                    st.markdown(response
+                                , unsafe_allow_html=True
+                                )
                     time.sleep(0.1)
-                    st.session_state.messages.append(AIMessage(type="ai", content=response))
+                    
+                    # 문서 검증 결과 표시
+                    grounded_result = perform_groundedness_check(answer=query, context=response)
+                    grounded_label, grounded_color = grounded_result_mapping.get(grounded_result, ("알 수 없음", "gray"))
+                    grounded_msg = f'<span style="color:gray;">문서 검증 결과:</span> <span style="color:{grounded_color}; font-weight:bold;">{grounded_label}</span>'
+                    st.markdown(grounded_msg
+                                , unsafe_allow_html=True
+                                )
+                    
+                    llm_resp_and_grounded_msg = f"{response}\n\n{grounded_msg}"
+                    st.session_state.messages.append(AIMessage(type="ai", content=llm_resp_and_grounded_msg))
             except Exception as e:
                 print(f"error: {e}")
                 st.write("검색 실패했어요, 아는 만큼 답변할게요 🫠")
