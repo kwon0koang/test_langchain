@@ -141,9 +141,12 @@ def get_documents_from_actions(actions_json: str, tools: List[Tool]) -> List[Doc
         action_input = action['action_input']
         print(f"get_documents_from_actions / tool_name: {tool_name} / action_input: {action_input}")
         
+        # if tool_name == "None": # 사용할 도구 없음. 바로 빈 document 리턴
+        #     print(f"get_documents_from_actions / 사용할 도구 없음. 바로 빈 document 리턴")
+        #     return []
+        # 사용할 도구 없으면 오류 발생시켜서 streaming chain 사용하게끔 할 것
         if tool_name == "None": # 사용할 도구 없음. 바로 빈 document 리턴
-            print(f"get_documents_from_actions / 사용할 도구 없음. 바로 빈 document 리턴")
-            return []
+            raise ValueError("사용할 도구 없음")
         
         retriever = get_retriever_by_tool_name(tool_name)
         
@@ -408,8 +411,7 @@ if query:
                         st.session_state.messages.append(AIMessage(type="ai", content=llm_resp_and_grounded_msg))
             except Exception as e:
                 print(f"error: {e}")
-                st.write("검색 실패했어요, 아는 만큼 답변할게요 🫠")
-                # 검색 실패했기 때문에 LLM한테 그냥 물어보기
+                # st.write("검색 실패했어요, 아는 만큼 답변할게요 🫠")
                 with st.spinner(""):
                     # response = chain.invoke({"messages": st.session_state.messages}, {"callbacks": [stream_handler]})
                     response = streaming_chain.invoke({"messages": st.session_state.messages})
