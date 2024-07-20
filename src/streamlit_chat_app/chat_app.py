@@ -196,9 +196,9 @@ default_prompt = ChatPromptTemplate.from_messages([
 if 'retrieved_docs' not in st.session_state:
     st.session_state.retrieved_docs = []
     
-def get_page_contents_with_metadata(docs) -> str: 
+def get_page_contents_string(docs) -> str: 
     """
-    문서 리스트를 받아 각 문서의 본문 내용과 출처를 포함한 문자열을 생성
+    문서 리스트를 받아 각 문서의 본문 내용을 이어붙인 문자열을 생성
     """
     st.session_state.retrieved_docs = docs
     
@@ -259,7 +259,7 @@ def retrieved_docs_and_get_messages(messages: List[BaseMessage], selected_option
             , "question": query}
     
     return {"messages": messages_without_last
-            , "context": get_page_contents_with_metadata(st.session_state.retrieved_docs)
+            , "context": get_page_contents_string(st.session_state.retrieved_docs)
             , "question": query}
 
 def get_metadata_sources(docs) -> str: 
@@ -369,7 +369,14 @@ if query:
         response = ""
         print(f"selected_option_name: {st.session_state.selected_option_name}")
         
-        if st.session_state.selected_option_name:
+        if st.session_state.selected_option_name is None:
+            with st.spinner(""):
+                # response = chain.invoke({"messages": st.session_state.messages}, {"callbacks": [stream_handler]})
+                response = streaming_chain.invoke({"messages": st.session_state.messages})
+                print(f"chain.invoke / response: {response}")
+                time.sleep(0.1)
+                st.session_state.messages.append(AIMessage(type="ai", content=response.content))
+        else:
             try:
                 with st.spinner("검색 중이에요 🔍"):
                     response = agent_chain.invoke({"messages": st.session_state.messages})
@@ -379,16 +386,26 @@ if query:
                                 )
                     time.sleep(0.1)
                     
-                    # 문서 검증 결과 표시
-                    grounded_result = perform_groundedness_check(answer=query, context=response)
-                    grounded_label, grounded_color = grounded_result_mapping.get(grounded_result, ("알 수 없음", "gray"))
-                    grounded_msg = f'<span style="color:gray;">문서 검증 결과:</span> <span style="color:{grounded_color}; font-weight:bold;">{grounded_label}</span>'
-                    st.markdown(grounded_msg
-                                , unsafe_allow_html=True
-                                )
-                    
-                    llm_resp_and_grounded_msg = f"{response}\n\n{grounded_msg}"
-                    st.session_state.messages.append(AIMessage(type="ai", content=llm_resp_and_grounded_msg))
+                    if (len(st.session_state.retrieved_docs) <= 0):
+                        # 검색 문서 없으면
+                        st.session_state.messages.append(AIMessage(type="ai", content=response))
+                    else:
+                        # 검색 문서 있으면 LLM 답변과 문서 관련성 검증
+                        grounded_result = perform_groundedness_check(
+                            answer=response
+                            , context=get_page_contents_string(st.session_state.retrieved_docs)
+                            )
+                        grounded_label, grounded_color = grounded_result_mapping.get(grounded_result, ("알 수 없음", "gray"))
+                        grounded_msg = f'<span style="color:gray;">문서 검증 결과:</span> <span style="color:{grounded_color}; font-weight:bold;">{grounded_label}</span>'
+                        st.markdown(grounded_msg
+                                    , unsafe_allow_html=True
+                                    )
+                        
+                        # 검색 문서 초기화
+                        st.session_state.retrieved_docs = []
+                        
+                        llm_resp_and_grounded_msg = f"{response}\n\n{grounded_msg}"
+                        st.session_state.messages.append(AIMessage(type="ai", content=llm_resp_and_grounded_msg))
             except Exception as e:
                 print(f"error: {e}")
                 st.write("검색 실패했어요, 아는 만큼 답변할게요 🫠")
@@ -399,10 +416,3 @@ if query:
                     print(f"chain.invoke / response: {response}")
                     time.sleep(0.1)
                     st.session_state.messages.append(AIMessage(type="ai", content=response.content))
-        else:
-            with st.spinner(""):
-                # response = chain.invoke({"messages": st.session_state.messages}, {"callbacks": [stream_handler]})
-                response = streaming_chain.invoke({"messages": st.session_state.messages})
-                print(f"chain.invoke / response: {response}")
-                time.sleep(0.1)
-                st.session_state.messages.append(AIMessage(type="ai", content=response.content))
