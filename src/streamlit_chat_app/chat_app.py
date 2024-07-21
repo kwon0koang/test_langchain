@@ -79,7 +79,7 @@ selected_option_display_name = st.sidebar.selectbox(
 # 적합한 tool 추출 위한 프롬프트
 prompt_for_extract_actions = hub.pull("kwonempty/extract-actions-for-ollama")
 
-def get_tools(query):
+def get_tools(query) -> json:
     """
     사용 가능한 도구들의 이름과 설명을 JSON 형식으로 반환
     """
