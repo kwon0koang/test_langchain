@@ -42,6 +42,7 @@ ghostscript = "^0.7"
 
 #
 langchain-upstage = "^0.1.7"
+langchain-ollama = "^0.1.0"
 
 [build-system]
 requires = ["poetry-core"]
