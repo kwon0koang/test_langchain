@@ -43,6 +43,9 @@ ghostscript = "^0.7"
 #
 langchain-upstage = "^0.1.7"
 langchain-ollama = "^0.1.0"
+llama-index-core = "^0.10.58"
+llama-parse = "^0.4.9"
+llama-index-readers-file = "^0.1.32"
 
 [build-system]
 requires = ["poetry-core"]
