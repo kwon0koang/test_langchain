@@ -84,6 +84,8 @@ docx2txt = "^0.8"
 nest-asyncio = "^1.6.0"
 rapidocr-onnxruntime = "^1.3.24"
 seaborn = "^0.13.2"
+html2text = "^2024.2.26"
+markdownify = "^0.13.1"
 
 
 [build-system]
