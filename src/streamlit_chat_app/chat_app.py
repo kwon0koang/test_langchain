@@ -31,7 +31,8 @@ from langchain_core.documents.base import Document
 from datetime import datetime
 from utils import current_date, perform_groundedness_check, grounded_result_mapping
 from callbacks import StreamCallback
-from tools import tools, options_in_sidebar, TOOL_AUTO, SAVED_NEWS_SEARCH_TOOL_NAME, PDF_SEARCH_TOOL_NAME, WEB_SEARCH_TOOL_NAME
+from tools import tools, options_in_sidebar, chain_for_extract_actions, get_documents_from_actions, get_retriever_by_tool_name, TOOL_AUTO, SAVED_NEWS_SEARCH_TOOL_NAME, PDF_SEARCH_TOOL_NAME, WEB_SEARCH_TOOL_NAME
+from llm import gemma2
 
 st.set_page_config(
     page_title="권봇", # 페이지 제목
@@ -42,9 +43,9 @@ st.set_page_config(
 
 st.title("권봇 🤖")
 
-eeve = ChatOllama(model="EEVE-Korean-Instruct-10.8B-v1.0:latest", temperature=0)
+# eeve = ChatOllama(model="EEVE-Korean-Instruct-10.8B-v1.0:latest", temperature=0)
 # llama = ChatOllama(model="llama3:8b", temperature=0)
-qwen2 = ChatOllama(model="qwen2:latest", temperature=0)
+# qwen2 = ChatOllama(model="qwen2:latest", temperature=0)
 
 # ==========================================================================================================================================================================================
 
@@ -53,9 +54,6 @@ option_names, option_display_names = zip(*options_in_sidebar)
 
 if 'selected_option_name' not in st.session_state:
     st.session_state.selected_option_name = None
-
-if 'test_count' not in st.session_state:
-    st.session_state.test_count = 12345
 
 # 선택된 옵션 업데이트 함수
 def update_selected_option():
@@ -73,91 +71,6 @@ selected_option_display_name = st.sidebar.selectbox(
     on_change=update_selected_option,
     key='selected_option_display_name'
 )
-
-# ==========================================================================================================================================================================================
-
-# 적합한 tool 추출 위한 프롬프트
-prompt_for_extract_actions = hub.pull("kwonempty/extract-actions-for-ollama")
-
-def get_tools(query) -> str:
-    """
-    사용 가능한 도구들의 이름과 설명을 JSON 문자열 형식으로 변환하여 반환
-    """
-    # tools 리스트에서 각 도구의 이름, 설명을 딕셔너리 형태로 추출
-    tool_info = [{"tool_name": tool.name, "tool_description": tool.description} for tool in tools]
-    
-    print(f"get_tools / tool_info: {tool_info}")
-    
-    # tool_info 리스트를 JSON 문자열 형식으로 변환하여 반환
-    return json.dumps(tool_info, ensure_ascii=False)
-
-chain_for_extract_actions = (
-    {"tools": get_tools, "question": RunnablePassthrough()}
-    | prompt_for_extract_actions 
-    | qwen2
-    | StrOutputParser()
-    )
-
-# ==========================================================================================================================================================================================
-
-def get_retriever_by_tool_name(name: str) -> VectorStoreRetriever:
-    """
-    도구 이름을 통해 검색기 반환
-    """
-    for tool in tools:
-        if tool.name == name:
-            return tool.func.keywords['retriever']
-    return None
-    
-def get_documents_from_actions(actions_json: str, tools: List[Tool]) -> List[Document]:
-    """
-    주어진 JSON 문자열을 파싱하여 해당 액션에 대응하는 검색기를 찾아서 
-    액션을 실행 후 검색된 문서를 반환
-    
-    :param actions_json: 액션과 그 입력이 포함된 JSON 문자열
-    :param tools: 사용 가능한 도구들의 리스트
-    :return: 액션을 통해 검색된 문서들의 리스트
-    """
-    print(f"get_documents_from_actions / actions_json: {actions_json}")
-    
-    # JSON 문자열을 파싱
-    try:
-        actions = json.loads(actions_json)
-    except json.JSONDecodeError:
-        raise ValueError("유효하지 않은 JSON 문자열")
-
-    # 파싱된 객체가 리스트인지 확인
-    if not isinstance(actions, list):
-        raise ValueError("제공된 JSON은 액션 리스트를 나타내야 함")
-
-    documents = []
-
-    # 각 액션을 처리
-    for action in actions:
-        if not isinstance(action, dict) or 'action' not in action or 'action_input' not in action:
-            continue  # 유효하지 않은 액션은 건너뜀
-
-        tool_name = action['action']
-        action_input = action['action_input']
-        print(f"get_documents_from_actions / tool_name: {tool_name} / action_input: {action_input}")
-        
-        # if tool_name == "None": # 사용할 도구 없음. 바로 빈 document 리턴
-        #     print(f"get_documents_from_actions / 사용할 도구 없음. 바로 빈 document 리턴")
-        #     return []
-        # 사용할 도구 없으면 오류 발생시켜서 streaming chain 사용하게끔 할 것
-        if tool_name == "None": # 사용할 도구 없음. 바로 빈 document 리턴
-            raise ValueError("사용할 도구 없음")
-        
-        retriever = get_retriever_by_tool_name(tool_name)
-        
-        if retriever:
-            # 액션 입력으로 검색기 실행
-            retrieved_docs = retriever.invoke(action_input)
-            documents.extend(retrieved_docs)
-        
-    print(f"get_documents_from_actions / len(documents): {len(documents)}")
-    return documents
-
 
 # ==========================================================================================================================================================================================
 
@@ -249,6 +162,11 @@ def retrieved_docs_and_get_messages(messages: List[BaseMessage], selected_option
     
     if TOOL_AUTO == selected_option_name:
         actions_json = chain_for_extract_actions.invoke(query)
+        
+        # 예외 답변 후처리
+        actions_json = actions_json.replace("```json", "")
+        actions_json = actions_json.replace("```", "")
+        
         st.session_state.retrieved_docs = get_documents_from_actions(actions_json, tools)
     else:
         retriever = get_retriever_by_tool_name(selected_option_name)
@@ -301,8 +219,8 @@ with_context_chain = (
         , "question": x["question"]
         })
     | agent_prompt
-    | eeve
-    | parse
+    # | gemma2
+    # | parse
 )
 
 without_context_chain = (
@@ -312,8 +230,8 @@ without_context_chain = (
         ,"question": x["question"]
         })
     | default_prompt
-    | eeve
-    | StrOutputParser()
+    # | gemma2
+    # | StrOutputParser()
 )
 
 agent_chain = (
@@ -331,8 +249,8 @@ if "messages" not in st.session_state:
     # st.session_state.messages = [AIMessage(type="ai", content="무엇을 도와드릴까요?")]
     st.session_state.messages = []
 
-# 10개까지만 표시되도록 메시지 수 제한
-MAX_MESSAGES_COUNT = 10
+# 8개까지만 표시되도록 메시지 수 제한
+MAX_MESSAGES_COUNT = 8
 if len(st.session_state.messages) >= MAX_MESSAGES_COUNT:
     st.session_state.messages = st.session_state.messages[2:]
 
@@ -354,7 +272,7 @@ if query:
     with st.chat_message("ai"):
         print(f"messages: {st.session_state.messages}")
         
-        streaming_eeve_llm = ChatOllama(model="EEVE-Korean-Instruct-10.8B-v1.0:latest"
+        streaming_llm = ChatOllama(model="ko-gemma-2-9b-it.Q5_K_M:latest"
                             , temperature=0
                             , callbacks=[StreamCallback(st.empty(), initial_text="")]
                             )
@@ -367,7 +285,8 @@ if query:
 """)
             , MessagesPlaceholder(variable_name="messages"),
         ])
-        streaming_chain = prompt | streaming_eeve_llm
+        streaming_chain = prompt | streaming_llm
+        streaming_agent_chain = agent_chain | streaming_llm
         
         response = ""
         print(f"selected_option_name: {st.session_state.selected_option_name}")
@@ -382,20 +301,32 @@ if query:
         else:
             try:
                 with st.spinner("검색 중이에요 🔍"):
-                    response = agent_chain.invoke({"messages": st.session_state.messages})
+                    # response = agent_chain.invoke({"messages": st.session_state.messages})
+                    response = streaming_agent_chain.invoke({"messages": st.session_state.messages})
+                    
                     print(f"agent_chain.invoke / response: {response}")
-                    st.markdown(response
-                                , unsafe_allow_html=True
-                                )
+                    
+                    # st.markdown(response
+                    #             , unsafe_allow_html=True
+                    #             )
+                    
                     time.sleep(0.1)
                     
                     if (len(st.session_state.retrieved_docs) <= 0):
                         # 검색 문서 없으면
                         st.session_state.messages.append(AIMessage(type="ai", content=response))
                     else:
-                        # 검색 문서 있으면 LLM 답변과 문서 관련성 검증
+                        # 검색 문서 있으면 출처 표시 및 LLM 답변과 문서 관련성 검증
+                        
+                        # 출처 표시
+                        source_msg = f"<span style='color:gray;'>[출처]</span>\n\n{get_metadata_sources(st.session_state.retrieved_docs)}"
+                        st.markdown(source_msg
+                                    , unsafe_allow_html=True
+                                    )
+                        
+                        # LLM 답변과 문서 관련성 검증
                         grounded_result = perform_groundedness_check(
-                            answer=response
+                            answer=response.content
                             , context=get_page_contents_string(st.session_state.retrieved_docs)
                             )
                         grounded_label, grounded_color = grounded_result_mapping.get(grounded_result, ("알 수 없음", "gray"))
@@ -407,11 +338,16 @@ if query:
                         # 검색 문서 초기화
                         st.session_state.retrieved_docs = []
                         
-                        llm_resp_and_grounded_msg = f"{response}\n\n{grounded_msg}"
+                        llm_resp_and_grounded_msg = f"{response.content}\n\n{source_msg}\n\n{grounded_msg}"
                         st.session_state.messages.append(AIMessage(type="ai", content=llm_resp_and_grounded_msg))
             except Exception as e:
                 print(f"error: {e}")
-                # st.write("검색 실패했어요, 아는 만큼 답변할게요 🫠")
+                
+                if e == "사용할 도구 없음":
+                    st.markdown("### ❗️ 검색에 실패했어요, 아는 만큼 답변할게요")
+                else:
+                    st.markdown("### ❗️ 답변 중 오류가 발생했어요, 아는 만큼 답변할게요")
+                
                 with st.spinner(""):
                     # response = chain.invoke({"messages": st.session_state.messages}, {"callbacks": [stream_handler]})
                     response = streaming_chain.invoke({"messages": st.session_state.messages})
