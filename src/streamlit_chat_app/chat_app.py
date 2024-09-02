@@ -76,26 +76,21 @@ selected_option_display_name = st.sidebar.selectbox(
 
 agent_prompt = ChatPromptTemplate.from_messages([
     ("system", """
-너는 정확하고 신뢰할 수 있는 답변을 제공하는 유능한 업무 보조자야.
-아래의 context를 사용해서 question에 대한 답변을 작성해줘.
+You are a very smart Q&A Chatbot.
+Please refer to the [DOCUMENT] and answer the [QUESTION].
+If you don't know the answer, even after consulting the [CONTEXT], just say you don't know.
+Answers must be in Korean.
 
-다음 지침을 따라주세요:
-1. 답변은 반드시 한국어로 작성해야 해.
-2. context에 있는 정보만을 사용해서 답변해야 해.
-3. 정답을 확실히 알 수 없다면 "주어진 정보로는 답변하기 어렵습니다."라고만 말해.
-4. 답변 시 추측하거나 개인적인 의견을 추가하지 마.
-5. 가능한 간결하고 명확하게 답변해.
-""")
-    , MessagesPlaceholder(variable_name="messages"),
-    ("human", """
-     
-# question: 
-{question}
-
-# context: 
+----
+# [DOCUMENT]:
 {context}
 
-# answer: 
+----
+# [QUESTION]:
+{question}
+
+----
+# [ANSWER]:
 """)
 ])
 
@@ -119,10 +114,9 @@ def get_page_contents_string(docs) -> str:
     st.session_state.retrieved_docs = docs
     
     result = ""
-    
     for i, doc in enumerate(docs):
         if i > 0:
-            result += "\n"
+            result += "\n\n"
             
         # if 'url' in doc:
         #     # Web 검색
@@ -134,10 +128,10 @@ def get_page_contents_string(docs) -> str:
         # LLM 답변 이후에 parse 함수로 출처 붙여줄거니까 본문만 이어붙인 문자열 생성하자
         if 'url' in doc:
             # Web 검색
-            result += f"{doc['content']}"
+            result += f"## DOCUMENT {i+1}:\n{doc['content']}"
         else:
             # Vector DB 검색
-            result += f"{doc.page_content}"
+            result += f"## DOCUMENT {i+1}:\n{doc.page_content}"
     
     return result
 
@@ -195,13 +189,24 @@ def get_metadata_sources(docs) -> str:
             sources.add(doc['url'])
         else:
             # Vector DB 검색
-            source = doc.metadata['source']
-            is_pdf = source.endswith('.pdf')
-            if (is_pdf):
+            # todo kyk 추후 file_path로 통일해서 인덱싱 필요
+            file_path = ""
+            if 'source' in doc.metadata:
                 file_path = doc.metadata['source']
+            if 'file_path' in doc.metadata:
+                file_path = doc.metadata['file_path']
+            is_pdf = file_path.endswith('.pdf')
+            if (is_pdf):
                 file_name = os.path.basename(file_path)
-                source = f"[{file_name} ({int(doc.metadata['page']) + 1}페이지)](file://{file_path})"
-            sources.add(source)
+                
+                # todo kyk 추후 page_number로 통일해서 인덱싱 필요
+                page_number = 0
+                if 'page' in doc.metadata:
+                    page_number = int(doc.metadata['page']) + 1
+                if 'page_number' in doc.metadata:
+                    page_number = doc.metadata['page_number']
+                file_path = f"[{file_name} ({page_number}페이지)](file://{file_path})"
+            sources.add(file_path)
         
     return "\n\n".join(sources)
 
@@ -212,8 +217,7 @@ def parse(ai_message: AIMessage) -> str:
     return f"{ai_message.content}\n\n<span style='color:gray;'>[출처]</span>\n\n{get_metadata_sources(st.session_state.retrieved_docs)}"
 
 with_context_chain = (
-    RunnablePassthrough()
-    | RunnableLambda(lambda x: {
+    RunnableLambda(lambda x: {
         "messages": x["messages"]
         , "context": x["context"]
         , "question": x["question"]
@@ -224,8 +228,7 @@ with_context_chain = (
 )
 
 without_context_chain = (
-    RunnablePassthrough()
-    | RunnableLambda(lambda x: {
+    RunnableLambda(lambda x: {
         "messages": x["messages"]
         ,"question": x["question"]
         })
